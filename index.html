@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#16152b" />
+    <meta name="description" content="Roundhouse and Scruff play back-to-back 20-minute football matches with live commentary at Rush Arena." />
+    <title>Roundhouse vs. Scruff | ZeeRush Gaming</title>
+  </head>
+  <body>
+    <main id="broadcast" aria-label="Roundhouse vs. Scruff live football">
+      <div id="scene" aria-label="Animated football pitch"></div>
+      <div id="hud">
+        <header class="masthead">
+          <div class="brand" aria-label="ZeeRush Gaming"><b class="brand-icon" aria-hidden="true">Z</b><span><strong>ZEERUSH</strong><small>GAMING</small></span></div>
+          <section class="scoreboard" aria-label="Match scoreboard">
+            <div class="match-label"><span></span><b id="match-number">MATCH 01</b><span></span></div>
+            <div class="score-row">
+              <div class="team team-a"><span class="crest">R</span><strong id="team-a">ROUNDHOUSE FC</strong></div>
+              <div class="score" aria-label="Current score"><b id="score-a">0</b><span>–</span><b id="score-b">0</b></div>
+              <div class="team team-b"><strong id="team-b">SCRUFF FC</strong><span class="crest">S</span></div>
+            </div>
+            <div class="clock-block"><b id="half-label">1ST HALF</b><time id="clock">00:00</time><i id="clock-progress"></i></div>
+          </section>
+          <div class="live"><i></i> LIVE</div>
+        </header>
+        <div class="arena-label"><span></span><div><b>RUSH ARENA</b><small>5-A-SIDE FOOTBALL</small></div></div>
+        <div id="capture-players" aria-hidden="true" hidden><span hidden></span><span hidden></span></div>
+        <button id="hero-toggle" class="hero-toggle" type="button" aria-haspopup="dialog" aria-controls="hero-picker" aria-label="Heroes"><span class="hero-toggle-star" aria-hidden="true">★</span> <span id="hero-toggle-label">Heroes</span></button>
+        <div class="rivals hud-float" id="rivals" aria-label="Captains Boulder and Zip" hidden>
+          <div><b>BOULDER</b><small>THE SHOW-OFF</small></div>
+          <div><b>ZIP</b><small>THE TRICKSTER</small></div>
+        </div>
+        <section class="match-report" id="match-report" aria-label="Match report" hidden>
+          <div class="report-header"><b id="report-title"></b><span id="report-match"></span></div>
+          <div class="report-score"><b id="report-a"></b><strong id="report-score"></strong><b id="report-b"></b></div>
+          <div class="report-result" id="report-result" hidden></div>
+          <div class="report-stats"><span id="report-shots"></span><span id="report-saves"></span></div>
+          <figure class="highlight" id="report-highlight" hidden>
+            <canvas id="highlight-image" width="256" height="144" aria-hidden="true" hidden></canvas>
+            <figcaption><small id="highlight-clock"></small><b id="highlight-name"></b><span id="highlight-story"></span></figcaption>
+          </figure>
+          <div class="report-footer"><b id="report-star"></b><span id="report-series"></span></div>
+          <small id="report-kickoff" hidden></small>
+        </section>
+        <div id="commentary" class="commentary hud-float" aria-live="polite" hidden>
+          <div class="radio-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <canvas id="commentary-portrait" width="100" height="74" aria-hidden="true" hidden></canvas>
+          <div class="radio-copy"><b id="commentary-event" hidden></b><small><span id="commentary-channel">RUSH RADIO</span> <span id="commentary-host"></span></small><div id="commentary-text"></div></div>
+        </div>
+        <div id="callout" class="callout hud-float" aria-live="polite" hidden><small id="event-label"></small><strong id="event-text"></strong><span id="event-detail" hidden></span></div>
+        <div id="recap" class="recap hud-float" hidden>
+          <canvas id="recap-portrait" width="64" height="64" aria-hidden="true"></canvas>
+          <div><b id="recap-name"></b><small id="recap-detail"></small></div>
+        </div>
+      </div>
+      <dialog id="hero-picker" class="hero-picker" aria-labelledby="hero-heading" aria-describedby="hero-current">
+        <header class="hero-header">
+          <div><h2 id="hero-heading">Pick your hero</h2><p id="hero-current"></p></div>
+          <button id="hero-close" type="button" autofocus aria-label="Close hero picker">×</button>
+        </header>
+        <div id="hero-list" class="hero-list"></div>
+        <footer class="hero-footer"><button id="hero-clear" type="button" hidden>Clear favorite</button></footer>
+      </dialog>
+      <div id="loading" role="status"><div class="brand-icon" aria-hidden="true">Z</div><span>Opening Rush Arena</span></div>
+      <aside id="operator" aria-label="Operator controls" hidden></aside>
+      <pre id="diagnostics" hidden></pre>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

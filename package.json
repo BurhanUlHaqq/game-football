@@ -1,0 +1,35 @@
+{
+  "name": "zeerush-endless-football",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "node scripts/serve.mjs",
+    "record:take": "tsx scripts/record-take.mjs",
+    "edit:episode": "tsx scripts/edit-episode.mjs",
+    "test": "tsx --test test/*.test.ts",
+    "test:browser": "node scripts/browser.mjs",
+    "test:stress": "tsx scripts/stress.ts",
+    "test:soak": "node scripts/browser.mjs --soak"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "0.21.0",
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/three": "0.187.0",
+    "eslint": "10.15.0",
+    "playwright": "1.65.1",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.73.0",
+    "vite": "8.3.8"
+  }
+}
