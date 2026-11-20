@@ -688,6 +688,7 @@ test('the action camera keeps the ball, shot taker, and keeper in frame at eithe
     untilLive(match);
     const camera = new BroadcastCamera();
     const show = new MatchShow();
+    match.owner = undefined;
     for (const [direction, shooter, keeper] of [[1, 4, 5], [-1, 9, 0]] as const) {
       match.currentBall = { x: direction * 16.3, y: BALL, z: 2.5 };
       match.players[shooter].x = direction * 11.1;
@@ -708,11 +709,43 @@ test('the action camera keeps the ball, shot taker, and keeper in frame at eithe
   } finally { match.dispose(); }
 });
 
+test('nearby speakers get a tighter two-player frame in the live stream and vertical recording', () => {
+  const match = new Match('camera-conversation');
+  try {
+    untilLive(match);
+    const speaker = match.players[2], listener = match.players[7];
+    Object.assign(speaker, { x: -2.1, z: 0.8 });
+    Object.assign(listener, { x: 2.0, z: -0.7 });
+    match.owner = speaker;
+    match.currentBall = { x: -1.6, y: BALL, z: 0.1 };
+    const show = new MatchShow();
+    for (const aspect of [16 / 9, 9 / 16]) {
+      const camera = new BroadcastCamera();
+      camera.production = aspect < 1;
+      camera.resize(aspect);
+      camera.update(match, STEP, show, { speaker: speaker.id, listener: listener.id, kind: 'Rival', tick: match.tick, duration: 120, reply: false });
+      assert.equal(camera.mode, 'conversation');
+      assert.deepEqual(camera.subjects, [speaker.id, listener.id]);
+      for (const player of [speaker, listener]) {
+        const feet = new Vector3(player.x, 0, player.z).project(camera.camera);
+        const head = new Vector3(player.x, 2.85, player.z).project(camera.camera);
+        assert.ok(head.y - feet.y > 0.39, 'Both players read at more than 19.5% of frame height');
+        assert.ok(Math.abs(head.x) < 0.88 && head.y < 0.7);
+      }
+      const ball = new Vector3(match.currentBall.x, BALL, match.currentBall.z).project(camera.camera);
+      assert.ok(Math.abs(ball.x) < 0.9 && ball.y > -0.47 && ball.y < 0.7, 'The ball stays visible through the conversation');
+    }
+  } finally { match.dispose(); }
+});
+
 test('a lofted switch reaches the running recipient and both endpoints fit the phone camera', () => {
   const match = new Match('cup-13');
   const camera = new BroadcastCamera();
+  const vertical = new BroadcastCamera();
   const show = new MatchShow();
   camera.resize(390 / 220);
+  vertical.resize(9 / 16);
+  vertical.production = true;
   try {
     let highest = 0;
     let received = false;
@@ -722,6 +755,7 @@ test('a lofted switch reaches the running recipient and both endpoints fit the p
       match.step();
       for (const event of match.events) {
         camera.react(event);
+        vertical.react(event);
         if (event.kind !== 'pass' || event.flight?.style !== 'switch' || event.flight.receiver === undefined || !event.point) continue;
         assert.ok(Math.abs(event.point.z - event.flight.to.z) > 10);
         assert.ok(event.flight.range > 13);
@@ -729,10 +763,17 @@ test('a lofted switch reaches the running recipient and both endpoints fit the p
         highest = 0;
       }
       camera.update(match, STEP, show);
+      const previousScale = vertical.scale;
+      const previousMode = vertical.mode;
+      vertical.update(match, STEP, show);
       if (receiving === undefined) continue;
       highest = Math.max(highest, match.currentBall.y);
       if (match.flight?.style === 'switch' && highest > 1.55) {
         assert.equal(camera.mode, 'long-ball');
+        assert.equal(vertical.mode, 'long-ball');
+        if (previousMode !== 'stadium') assert.ok(vertical.scale / previousScale < 1.14, 'The vertical camera eases out into the flight');
+        const tallBall = new Vector3(match.currentBall.x, match.currentBall.y, match.currentBall.z).project(vertical.camera);
+        assert.ok(Math.abs(tallBall.x) < 0.9 && tallBall.y > -0.45 && tallBall.y < 0.7);
         camera.camera.updateMatrixWorld();
         for (const { x, y, z } of [match.currentBall, { ...match.flight.to, y: BALL }]) {
           const pixel = new Vector3(x, y, z).project(camera.camera);

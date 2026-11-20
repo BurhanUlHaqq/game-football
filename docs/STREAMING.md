@@ -4,7 +4,7 @@ Run `npm run serve` in the workspace and keep that terminal open. Use [http://12
 
 ## Record and cut an episode
 
-[Open the recording layout](http://127.0.0.1:41730/?mode=capture&fps=30). Set the capture source to **1920×1080** for a horizontal episode or **1080×1920** for a vertical clip. Capture mode uses its own preferences and checkpoint, with larger score and caption graphics, a dedicated vertical camera, and brief on-field names during suitable conversations.
+Set the capture source to **1920×1080** for a horizontal stream or episode, or **1080×1920** for a vertical clip. The same link frames the action to fit the source dimensions. The camera follows play from the sideline and moves closer for nearby dialogue, saves, and celebrations. Capture mode uses its own preferences and checkpoint, with larger score and caption graphics and brief on-field names during suitable conversations. [Open the recording layout at 30 fps](http://127.0.0.1:41730/?mode=capture&fps=30)
 
 For an OBS or Streamlabs take, open **Broadcast controls** with **O**. Start the marker log at the start of the recording, note any difference between the two start times, then close the panel. At the end of the take, stop the marker log and download the JSON edit log and `.srt` subtitles. The JSON gives elapsed recording time, match time, score, players, save types, goals, and completed exchanges. It also records dialogue text and whether the game played the audio. The exported clock covers the current take. Download the files before starting another take or reloading the source.
 

@@ -464,7 +464,9 @@ async function start() {
     if (layout && (!caption.hidden || !overlay.hidden || !recapCard.hidden || !rivals.hidden)) {
       const moment = show.moment && match.tick - show.moment.tick <= 170 ? show.moment : undefined;
       const lead = show.getCelebration(match.tick)?.lead;
-      const actors = lead !== undefined ? [lead] : rivals.hidden ? [moment?.player, moment?.opponent, recapCard.hidden ? undefined : show.recap?.player] : CAPTAINS;
+      const actors = lead !== undefined ? [lead] : rivals.hidden
+        ? [...view.camera.subjects.slice(0, 2), moment?.player, moment?.opponent, recapCard.hidden ? undefined : show.recap?.player]
+        : CAPTAINS;
       const talking = !caption.hidden && captionPitch;
       layout.update(view.screenPoints(talking ? [...actors, talking.speaker, talking.listener] : actors));
     }

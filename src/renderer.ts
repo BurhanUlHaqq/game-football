@@ -31,6 +31,7 @@ export class BroadcastRenderer {
   readonly chars: Character[];
   readonly articulated = new ArticulatedInstances();
   readonly ball: T.Mesh;
+  private readonly positions: { ball: T.Vector3; players: readonly T.Vector3[] };
   private readonly ballRing: T.Mesh<T.RingGeometry, T.MeshBasicMaterial>;
   private readonly heroRing: T.Mesh<T.RingGeometry, T.MeshBasicMaterial>;
   private readonly impactRing: T.Mesh<T.RingGeometry, T.MeshBasicMaterial>;
@@ -67,6 +68,7 @@ export class BroadcastRenderer {
     this.chars = match.players.map(p => new Character(p, this.articulated));
     this.articulated.build(this.scene);
     this.ball = makeFootball(this.scene);
+    this.positions = { ball: this.ball.position, players: this.chars.map(character => character.root.position) };
     this.ballRing = new T.Mesh(new T.RingGeometry(0.43, 0.57, 36), new T.MeshBasicMaterial({ color: '#2c1c42', transparent: true, opacity: 0.68, depthWrite: false }));
     this.ballRing.rotation.x = -Math.PI / 2;
     this.ballRing.position.y = 0.031;
@@ -214,7 +216,7 @@ export class BroadcastRenderer {
       this.impactRing.scale.setScalar(0.58 + impactAge * 1.94);
       this.impactRing.material.opacity = 0.8 * (1 - impactAge / 0.55);
     }
-    this.camera.update(match, dt, show, pitch);
+    this.camera.update(match, dt, show, pitch, this.positions);
     this.renderer.render(this.scene, this.camera.camera);
     this.frames++;
     const smooth = damp(2.1, dt);
@@ -238,12 +240,16 @@ export class BroadcastRenderer {
 
   framing() {
     const pixel = this.ball.position.clone().project(this.camera.camera);
-    return { mode: this.camera.mode, scale: this.camera.scale, ballX: pixel.x, ballY: pixel.y, ballVisible: this.ball.visible };
+    const subject = this.camera.subjects[0];
+    const feet = subject === undefined ? undefined : this.positions.players[subject];
+    const height = feet ? (feet.clone().add(new T.Vector3(0, 2.85, 0)).project(this.camera.camera).y - feet.clone().project(this.camera.camera).y) * 0.5 : 0;
+    return { mode: this.camera.mode, scale: this.camera.scale, ballX: pixel.x, ballY: pixel.y, ballVisible: this.ball.visible,
+      subjects: this.camera.subjects.slice(), subjectHeight: height };
   }
 
   namePoint(id: number) {
     const point = this.chars[id].root.position.clone();
-    point.y += 2.85;
+    point.y += 3.14;
     point.project(this.camera.camera);
     return { x: (point.x + 1) / 2, y: (1 - point.y) / 2 };
   }
@@ -258,10 +264,9 @@ export class BroadcastRenderer {
       if (id === undefined) continue;
       const position = this.chars[id]?.root.position;
       if (!position) continue;
-      points.push(map(position.clone().add(new T.Vector3(0, 1.8, 0))));
+      points.push(map(position.clone().add(new T.Vector3(0, 2.43, 0))));
       if (this.camera.mode === 'celebration') {
-        points.push(map(position.clone().add(new T.Vector3(0, 0.5, 0))));
-        points.push(map(position.clone().add(new T.Vector3(0, 2.6, 0))));
+        points.push(map(position.clone().add(new T.Vector3(0, 1.20, 0))));
       }
     }
     return points;

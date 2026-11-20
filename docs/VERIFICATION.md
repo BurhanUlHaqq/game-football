@@ -2,7 +2,17 @@
 
 The updated build was tested on Windows 11 26H2 x64 with an Intel Core Ultra 7 255H, Intel Arc 140T graphics, Node.js 24.22.3 and Chrome 157.0.8103.79. Chrome reported Intel graphics through ANGLE/D3D11.
 
-## Player silhouettes and expanded Rush Radio
+## Sideline camera and streaming capture
+
+Strict TypeScript, ESLint, the production build, and all 35 automated tests passed. On comparable samples from the first two minutes of the default match, the player nearest the ball grew from a median 7.4% to 21% of the picture height in landscape and from 5% to 23% in vertical.
+
+Three full simulated matches exercised four layouts. The ball stayed in frame across 400,432 samples. The revised camera removes the abrupt wide pullback at the start of a long ball and still holds the shooter, keeper, and ball when space allows.
+
+Chrome sampled 3,699 visible ball positions across landscape capture, vertical capture, and a 390×220 browser. The ball stayed in frame and clear of the scoreboard and captions in those samples. Chrome also verified the final score and the automatic next kickoff. A 1920×1080 game with sound averaged 29.9 fps at a 30 fps target with zero browser errors or simulation faults. [Sideline dialogue](../artifacts/camera-dialogue-horizontal.png) · [Vertical save](../artifacts/camera-save-vertical.png) · [Goal reaction](../artifacts/camera-goal-horizontal.png) · [Full-time result](../artifacts/camera-fulltime-horizontal.png)
+
+The 24-second preview includes a save, a shot off the post, a goal, and two exchanges with five audible lines. The export decoded as 1920×1080 H.264 at 30 fps with stereo AAC and a measured peak of −4.3 dBFS. [Camera and audio preview](../artifacts/rush-arena-camera-preview.mp4)
+
+## Earlier player silhouettes and expanded Rush Radio
 
 Strict TypeScript, ESLint, the production build, and all 34 automated tests passed. The voice bank has 365 distinct captions and 365 non-silent PCM clips, including 257 new clips. Across three simulated matches, all ten players spoke in each fixture and the scheduler used 109 distinct new clips. The simulations recorded zero faults.
 

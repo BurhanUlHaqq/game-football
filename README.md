@@ -4,7 +4,9 @@ ZeeRush Gaming’s local broadcast of back-to-back, computer-controlled 5-a-side
 
 The first match starts when the page opens or refreshes, with the clock at **00:00** and the score at **0–0**. Halftime begins at **10:00**, when the teams swap ends and keep the score. At **20:00** the next match clock starts at 00:00 with a fresh score. The full-time celebration runs for **10 seconds**, with the final score and a countdown to the next automatic kickoff.
 
-Boulder and Zip are the captains. Real saves, shots off the post, and steals can trigger their comic reactions. Quick saves get a short wave or shrug. Goal celebrations run for up to **4 seconds**. Roundhouse jumps and pumps its fists while Scruff spins and waves. The scorer gets a close-up, team-colored confetti, and a goal jingle before the automatic kickoff. The camera tightens for attacks, a ground marker follows the ball, and captions move clear of the action. Player portraits at restarts help viewers catch up. Halftime and full time show a short replay of a standout play and name the standout player when eligible.
+Boulder and Zip are the captains. Real saves, shots off the post, and steals can trigger their comic reactions. Quick saves get a short wave or shrug. Goal celebrations run for up to **4 seconds**. Roundhouse jumps and pumps its fists while Scruff spins and waves. The scorer gets a close-up, team-colored confetti, and a goal jingle before the automatic kickoff. Player portraits at restarts help viewers catch up. Halftime and full time show a short replay of a standout play and name the standout player when eligible.
+
+The broadcast opens with a brief arena view, then moves down to the sideline to follow the ball and nearby players. Conversations get a closer two-player shot when both speakers are near play. Saves include the keeper and the surrounding action, and goal celebrations show faces, gestures, and confetti. Long balls pull the camera back gradually. The vertical view follows a long delivery toward the receiver and keeps the ball clear of the caption area.
 
 Rush Radio includes 365 English clips across two announcers and all ten players. Calls rotate for goals, rebounds, specific keeper saves, and long passes. Teammates call to the player they pass to, and rivals trade playful challenges and comebacks after saves, tackles, and interceptions. Players glance at each other as they speak. The **On the Pitch** captions name both players and stay available with the sound muted. [Voice sampler](artifacts/rush-radio-preview.mp3)
 
@@ -20,7 +22,7 @@ Open **Heroes** to meet all ten players and choose a favorite. Each player has a
 
 **Production capture URL** [http://127.0.0.1:41730/](http://127.0.0.1:41730/)
 
-For edited videos, use [the recording layout](http://127.0.0.1:41730/?mode=capture&fps=30). It uses a larger score, a fixed caption area, and on-field name tags during selected conversations. It frames tall and wide recordings separately. Press **O** to mark the start of a take and export its edit log or subtitles. See the [recording and episode workflow](docs/STREAMING.md#record-and-cut-an-episode).
+For a stream or recording with a larger scoreboard, a fixed caption area, and on-field name tags during selected conversations, use the recording layout. It frames tall and wide sources separately. Press **O** to mark the start of a take and export its edit log or subtitles. [Open the recording layout](http://127.0.0.1:41730/?mode=capture&fps=30) · [Recording and episode workflow](docs/STREAMING.md#record-and-cut-an-episode)
 
 ## Run the game
 
