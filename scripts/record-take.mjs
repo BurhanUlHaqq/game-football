@@ -32,7 +32,7 @@ try {
   await page.exposeBinding('writeTakeChunk', async (_source, encoded) => {
     await file.writeFile(Buffer.from(encoded, 'base64'));
   });
-  await page.goto(`${origin}/?mode=capture&session=new&fps=30&audio=auto&seed=${encodeURIComponent(seed)}&captions=${burnedCaptions ? 'on' : 'off'}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${origin}/?mode=capture&session=new&start=record&fps=30&audio=auto&commentary=on&seed=${encodeURIComponent(seed)}&captions=${burnedCaptions ? 'on' : 'off'}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.rushCapture?.status().audioReady && window.rushCapture.status().audio === 'on');
   const start = await page.evaluate(async ({ title, viewport }) => {
     document.title = title;

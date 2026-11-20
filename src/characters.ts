@@ -49,7 +49,7 @@ function numberPatch(number: number, color: string, back: boolean) {
 
 type Leg = { hip: T.Group; knee: T.Group; foot: T.Group; side: number };
 type Arm = { shoulder: T.Group; elbow: T.Group; side: number };
-type ConversationPose = { partner: Point; elapsed: number; duration: number; speaking: boolean };
+type Glance = { partner: Point; elapsed: number };
 
 export class Character {
   readonly root = new T.Group();
@@ -185,7 +185,7 @@ export class Character {
     return target;
   }
 
-  animate(alpha: number, time: number, dt: number, gesture?: PlayerGesture, showcase = false, hasBall = false, talk?: ConversationPose) {
+  animate(alpha: number, time: number, dt: number, gesture?: PlayerGesture, showcase = false, hasBall = false, glance?: Glance) {
     const p = this.player;
     this.root.position.set(mix(p.oldX, p.x, alpha), 0, mix(p.oldZ, p.z, alpha));
     this.root.rotation.y = p.oldYaw + angleDiff(p.oldYaw, p.yaw) * alpha;
@@ -249,17 +249,11 @@ export class Character {
     this.mouth.scale.set(0.148, 0.071 + cheering * 0.026, 0.042);
     this.tongue.position.y = -0.111;
     this.perform(gesture, time, 1 - Math.max(diving, tipping, smothering) * 0.78);
-    if (talk) {
-      const { partner, elapsed, duration, speaking } = talk;
-      const weight = clamp(Math.min(elapsed / 0.16, (duration - elapsed) / 0.19), 0, 1);
-      const glance = Math.atan2(partner.x - p.x, partner.z - p.z);
-      this.head.rotation.y += clamp(angleDiff(this.root.rotation.y, glance), -0.43, 0.43) * weight * (1 - Math.min(move, 1) * 0.56);
-      this.head.rotation.x += (speaking ? -0.07 : 0.08 * Math.sin(elapsed * 7)) * weight;
-      if (speaking) {
-        const open = (0.5 + 0.5 * Math.sin(elapsed * 29 + Math.sin(elapsed * 11))) * weight;
-        this.mouth.scale.y += open * 0.097;
-        this.tongue.position.y -= open * 0.027;
-      }
+    if (glance) {
+      const { partner, elapsed } = glance;
+      const weight = clamp(Math.min(elapsed / 0.16, (1.8 - elapsed) / 0.19), 0, 1);
+      const look = Math.atan2(partner.x - p.x, partner.z - p.z);
+      this.head.rotation.y += clamp(angleDiff(this.root.rotation.y, look), -0.43, 0.43) * weight * (1 - Math.min(move, 1) * 0.56);
     }
     this.root.updateMatrixWorld(true);
   }

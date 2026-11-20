@@ -1,12 +1,12 @@
 import * as T from 'three';
 import { BALL, clamp, damp, distance, mix } from './football';
 import type { MatchEvent, MatchState, Point, Point3 } from './football';
-import type { PitchTurn } from './commentary';
 import type { Match, Player } from './match';
 import { CAPTAINS } from './show';
 import type { Celebration, MatchShow } from './show';
 
-type Shot = 'wide' | 'play' | 'attack' | 'reaction' | 'rivals' | 'close-up' | 'celebration' | 'long-ball' | 'conversation' | 'stadium';
+type Shot = 'wide' | 'play' | 'attack' | 'reaction' | 'rivals' | 'close-up' | 'celebration' | 'long-ball' | 'two-player' | 'stadium';
+type ActionPair = { player: number; partner: number; tick: number };
 type SafeFrame = { left: number; right: number; top: number; bottom: number };
 type FramingPoint = Point3 & { radius: number; required: boolean };
 type RenderPositions = { ball: Point3; players: readonly Point3[] };
@@ -50,6 +50,7 @@ export class BroadcastCamera {
   private elevation = 0.40;
   private previousState?: MatchState;
   private shot?: MatchEvent;
+  private pair?: ActionPair;
   private kickoff = -1000;
   mode: Shot = 'wide';
   scale = 1;
@@ -67,9 +68,19 @@ export class BroadcastCamera {
     if (event.kind === 'shot') this.shot = event;
     if (event.kind === 'pass' || event.kind === 'distribution' || event.kind === 'kickoff' || event.kind === 'fulltime') this.shot = undefined;
     if (event.kind === 'match-start' || event.kind === 'half-start') this.kickoff = event.tick;
+    if (['goal', 'halftime', 'fulltime', 'kickoff', 'recovery'].includes(event.kind)) this.pair = undefined;
+    const partner = event.kind === 'pass' || event.kind === 'distribution' ? event.flight?.receiver :
+      event.kind === 'save' || event.kind === 'tackle' || event.kind === 'interception' ? event.opponent : undefined;
+    if (event.player !== undefined && partner !== undefined && partner !== event.player && !this.actionPair(event.tick)) {
+      this.pair = { player: event.player, partner, tick: event.tick };
+    }
   }
 
-  update(match: Match, dt: number, show: MatchShow, pitch?: PitchTurn, rendered?: RenderPositions) {
+  actionPair(tick: number) {
+    return this.pair && tick - this.pair.tick < 110 ? this.pair : undefined;
+  }
+
+  update(match: Match, dt: number, show: MatchShow, rendered?: RenderPositions) {
     const { state, tick } = match;
     const ball = rendered?.ball ?? match.currentBall;
     const portrait = this.camera.aspect < 1;
@@ -103,12 +114,12 @@ export class BroadcastCamera {
       motion = 7.6;
     } else if (match.ballVisible) {
       this.addPoint(ball, BALL, true);
-      this.mode = this.frameLive(match, ball, show, pitch, portrait, rendered);
-      if (this.mode === 'conversation') {
+      this.mode = this.frameLive(match, ball, show, portrait, rendered);
+      if (this.mode === 'two-player') {
         depth = portrait ? 13.6 : 14.4;
         angle = 0.26;
-        const speaker = match.players[this.actors[0]], listener = match.players[this.actors[1]];
-        yaw = 0.11 + (Math.sin(speaker.yaw) * 0.76 + Math.sin(listener.yaw) * 0.24) * 0.46;
+        const player = match.players[this.actors[0]], partner = match.players[this.actors[1]];
+        yaw = 0.11 + (Math.sin(player.yaw) * 0.76 + Math.sin(partner.yaw) * 0.24) * 0.46;
       } else if (this.mode === 'reaction') {
         depth = portrait ? 14.1 : 15.3;
         angle = 0.29;
@@ -136,7 +147,7 @@ export class BroadcastCamera {
     this.camera.updateMatrixWorld();
   }
 
-  private frameLive(match: Match, ball: Point3, show: MatchShow, pitch: PitchTurn | undefined, portrait: boolean, rendered?: RenderPositions): Shot {
+  private frameLive(match: Match, ball: Point3, show: MatchShow, portrait: boolean, rendered?: RenderPositions): Shot {
     const live = match.state === 'live';
     const flight = live ? match.flight : undefined;
     const long = flight && (flight.style !== 'ground' && (flight.style !== 'drive' || flight.range > 11));
@@ -178,10 +189,11 @@ export class BroadcastCamera {
       add(keepers.find(id => Math.sign(match.players[id].home.x) === shot.side));
       return 'attack';
     }
-    if (live && pitch && this.fitsConversation(match, pitch, ball, portrait)) {
-      add(pitch.speaker);
-      add(pitch.listener);
-      return 'conversation';
+    const pair = this.actionPair(match.tick);
+    if (live && pair && this.fitsPair(match, pair, ball, portrait)) {
+      add(pair.player);
+      add(pair.partner);
+      return 'two-player';
     }
     if (!live || match.tick - this.kickoff < 170) {
       for (const id of CAPTAINS) if (distance(match.players[id], ball) < 7.4) add(id);
@@ -198,12 +210,11 @@ export class BroadcastCamera {
     return 'play';
   }
 
-  private fitsConversation(match: Match, pitch: PitchTurn, ball: Point3, portrait: boolean) {
-    const speaker = match.players[pitch.speaker];
-    const listener = match.players[pitch.listener];
-    return distance(speaker, listener) < (portrait ? 7.4 : 10.8) &&
-      Math.min(distance(ball, speaker), distance(ball, listener)) < (portrait ? 4.8 : 6.5) &&
-      Math.max(distance(ball, speaker), distance(ball, listener)) < (portrait ? 8.5 : 11.8);
+  private fitsPair(match: Match, pair: ActionPair, ball: Point3, portrait: boolean) {
+    const a = match.players[pair.player], b = match.players[pair.partner];
+    return distance(a, b) < (portrait ? 7.4 : 10.8) &&
+      Math.min(distance(ball, a), distance(ball, b)) < (portrait ? 4.8 : 6.5) &&
+      Math.max(distance(ball, a), distance(ball, b)) < (portrait ? 8.5 : 11.8);
   }
 
   private frameCelebration(match: Match, celebration: Celebration, rendered?: RenderPositions) {

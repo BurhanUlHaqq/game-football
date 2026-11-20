@@ -32,7 +32,7 @@ export class BroadcastLayout {
   private readonly fixed: HTMLElement[];
 
   constructor(private readonly root: HTMLElement, private readonly floating: HTMLElement[]) {
-    this.fixed = Array.from(root.querySelectorAll<HTMLElement>('.scoreboard, .brand, .live, .arena-label, .match-report, .hero-toggle'));
+    this.fixed = Array.from(root.querySelectorAll<HTMLElement>('.scoreboard, .brand, .live, .arena-label, .match-report, .hero-toggle, #sound-unlock'));
   }
 
   update(points: readonly ScreenPoint[]) {

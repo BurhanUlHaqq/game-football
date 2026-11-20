@@ -43,10 +43,10 @@
           <div class="report-footer"><b id="report-star"></b><span id="report-series"></span></div>
           <small id="report-kickoff" hidden></small>
         </section>
-        <div id="commentary" class="commentary hud-float" aria-live="polite" hidden>
-          <div class="radio-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-          <canvas id="commentary-portrait" width="100" height="74" aria-hidden="true" hidden></canvas>
-          <div class="radio-copy"><b id="commentary-event" hidden></b><small><span id="commentary-channel">RUSH RADIO</span> <span id="commentary-host"></span></small><div id="commentary-text"></div></div>
+        <button id="sound-unlock" type="button" hidden>Turn sound on</button>
+        <div id="commentary" class="commentary hud-float" data-channel="booth" aria-live="polite" aria-atomic="true" hidden>
+          <canvas id="commentary-booth" width="450" height="234" role="img" aria-label="Mick the toy horn and Emma the clockwork bell in the commentary booth"></canvas>
+          <div class="radio-copy"><b id="commentary-event" hidden></b><small><span id="commentary-channel">COMMENTARY BOX</span> <span id="commentary-host"></span></small><div id="commentary-text"></div></div>
         </div>
         <div id="callout" class="callout hud-float" aria-live="polite" hidden><small id="event-label"></small><strong id="event-text"></strong><span id="event-detail" hidden></span></div>
         <div id="recap" class="recap hud-float" hidden>

@@ -58,7 +58,7 @@ export class MatchAudio {
   private recording?: MediaStreamAudioDestinationNode;
   private noise?: AudioBuffer;
   private clips?: AudioBuffer;
-  private speech?: { source: AudioBufferSourceNode; priority: number };
+  private speech?: { source: AudioBufferSourceNode; level: GainNode; priority: number; id: LineId; start: number };
   private accentVoice?: OscillatorNode;
   private accentPriority = 0;
   private readonly streaming = new AbortController();
@@ -173,9 +173,7 @@ export class MatchAudio {
     if (!this.context || !this.master || !this.effects || !this.music || !this.commentary) return;
     const t = this.context.currentTime;
     if ((settings.audio === 'muted' || settings.commentary === 0) && this.speech) {
-      const speech = this.speech;
-      this.speech = undefined;
-      speech.source.stop(t + .015);
+      this.fadeSpeech(t);
     }
     this.master.gain.setTargetAtTime(settings.audio === 'muted' ? 0 : settings.master, t, 0.060);
     const duck = this.speech && settings.commentary > 0 && settings.audio !== 'muted';
@@ -184,25 +182,52 @@ export class MatchAudio {
     this.commentary.gain.setTargetAtTime(settings.commentary, t, 0.045);
   }
 
-  speak(id: LineId, priority: number) {
+  private fadeSpeech(now: number) {
+    if (!this.speech) return;
+    const { source, level } = this.speech;
+    this.speech = undefined;
+    level.gain.cancelAndHoldAtTime(now);
+    level.gain.linearRampToValueAtTime(0, now + .024);
+    source.stop(now + .026);
+  }
+
+  mouthLevel(id: LineId, elapsed: number) {
+    const [offset, duration] = cues[id];
+    if (this.speech?.id === id && this.context?.state === 'running') elapsed = this.context.currentTime - this.speech.start;
+    if (elapsed < 0 || elapsed >= duration - .075) return 0;
+    if (!this.clips) return .2 + .55 * Math.abs(Math.sin(elapsed * 14));
+    const samples = this.clips.getChannelData(0);
+    const start = Math.floor((offset + elapsed) * this.clips.sampleRate);
+    const end = Math.min(samples.length, start + 360);
+    let power = 0;
+    for (let i = start; i < end; i += 4) power += samples[i] ** 2;
+    return Math.min(1, 5 * Math.sqrt(power / Math.max(1, (end - start) / 4)));
+  }
+
+  speak(id: LineId, priority: number, elapsed = 0) {
     const ctx = this.context;
     if (this.status !== 'on' || !ctx || !this.commentary || !this.clips || this.settings.commentary === 0) return false;
-    if (this.speech && priority <= this.speech.priority) return false;
+    if (this.speech && priority < 4 && priority <= this.speech.priority) return false;
     const [offset, duration] = cues[id];
+    if (duration - elapsed < .42) return false;
     const source = ctx.createBufferSource();
     source.buffer = this.clips;
-    source.connect(this.commentary);
+    const level = ctx.createGain();
+    const onset = ctx.currentTime + .015;
+    level.gain.setValueAtTime(0, onset);
+    level.gain.linearRampToValueAtTime(1, onset + .012);
+    source.connect(level).connect(this.commentary);
     source.onended = () => {
       source.disconnect();
+      level.disconnect();
       if (this.speech?.source !== source) return;
       this.speech = undefined;
       if (!this.streaming.signal.aborted) this.update(this.settings);
     };
-    const previous = this.speech;
-    this.speech = { source, priority };
-    previous?.source.stop(ctx.currentTime + 0.015);
+    this.fadeSpeech(ctx.currentTime);
+    this.speech = { source, level, priority, id, start: onset - elapsed };
     this.update(this.settings);
-    source.start(ctx.currentTime + 0.015, offset, duration);
+    source.start(onset, offset + elapsed, duration - elapsed);
     this.commentaryPlayed++;
     this.lastSpoken = id;
     return true;

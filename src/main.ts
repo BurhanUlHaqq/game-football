@@ -2,7 +2,8 @@ import './styles.css';
 import { MatchAudio } from './audio';
 import { BroadcastLayout } from './broadcast-layout';
 import { Commentary } from './commentary';
-import type { CommentaryCall, PitchTurn } from './commentary';
+import type { CommentaryCall } from './commentary';
+import { CommentaryBooth } from './commentary-booth';
 import { formatTime, FULLTIME_BREAK, GOAL_BREAK, HALFTIME_BREAK, HALF_TICKS, KICKOFF_TICKS, MATCH_TICKS, STEP } from './football';
 import type { MatchEvent, MatchSummary, Team } from './football';
 import { connectHeroPicker } from './hero-picker';
@@ -37,6 +38,7 @@ async function start() {
   } : local;
   const settings = settingsFrom(location.search, storage);
   const production = settings.mode === 'capture';
+  let awaitingRecording = production && query.get('start') === 'record';
   const showCaptions = !production || query.get('captions') !== 'off';
   const edit = production ? new ProductionLog(settings.seed, settings.names) : undefined;
   byId('broadcast').dataset.mode = settings.mode;
@@ -58,8 +60,9 @@ async function start() {
   const matchNumber = byId('match-number');
   const clockProgress = byId('clock-progress');
   const caption = byId('commentary');
-  const captionChannel = byId('commentary-channel');
-  const captionPortrait = byId<HTMLCanvasElement>('commentary-portrait');
+  const booth = new CommentaryBooth(byId<HTMLCanvasElement>('commentary-booth'));
+  const unlockSound = byId<HTMLButtonElement>('sound-unlock');
+  caption.dataset.subtitles = showCaptions ? 'on' : 'off';
   const captionText = byId('commentary-text');
   const captionHost = byId('commentary-host');
   const captionEvent = byId('commentary-event');
@@ -103,7 +106,7 @@ async function start() {
   }, signal);
   let hideCallout = 0;
   let hideCaption = 0;
-  let captionPitch: PitchTurn | undefined;
+  let onAir: { call: CommentaryCall; tick: number; audible: boolean } | undefined;
   let hideReport = 0;
   let lastPlayCallout = -1000;
   let displayedRecap: CastRecap | undefined;
@@ -158,20 +161,17 @@ async function start() {
   function radio(call: CommentaryCall | undefined, moment?: ShowMoment, summary?: MatchSummary, fulltime = false) {
     if (!call) return;
     if (showCaptions && (production || moment)) overlay.hidden = true;
-    caption.hidden = !showCaptions;
-    captionPitch = call.pitch;
+    caption.hidden = false;
     captionText.textContent = call.text;
-    captionChannel.textContent = call.pitch ? 'ON THE PITCH' : 'RUSH RADIO';
-    captionHost.textContent = call.pitch ? `${call.host} to ${CAST[call.pitch.listener]}` : call.host;
-    caption.dataset.channel = call.pitch ? 'pitch' : 'radio';
-    captionPortrait.hidden = !call.pitch;
-    if (call.pitch) drawPortrait(captionPortrait, call.pitch.speaker);
-    const team = call.pitch ? match.players[call.pitch.speaker].team : moment?.kind === 'goal' ? moment.team : undefined;
+    captionHost.textContent = caption.dataset.host = call.host;
+    caption.dataset.intro = String(call.id.startsWith('boothHello') || call.id.startsWith('openingBooth'));
+    const team = moment?.kind === 'goal' ? moment.team : undefined;
     caption.dataset.team = team === undefined ? '' : String(team);
     captionEvent.hidden = !moment;
     if (moment) captionEvent.textContent = `${moment.beat === 'rematch' ? 'REMATCH · ' : ''}${moment.label} · ${moment.name}`;
     hideCaption = match.tick + (moment?.kind === 'goal' ? Math.max(call.ticks, GOAL_BREAK) : call.ticks);
     const audible = audio.speak(call.id, call.priority);
+    onAir = { call, tick: match.tick, audible };
     if (edit?.active) edit.call(call, stamp(summary, fulltime), hideCaption, audible);
   }
 
@@ -230,7 +230,7 @@ async function start() {
     if (event.kind === 'goal') {
       const team = event.team ?? 0;
       if (!visibleCall) {
-        if (production) caption.hidden = true;
+        if (production && !call) caption.hidden = true;
         callout(moment?.label ?? 'GOAL', moment?.player === undefined ? settings.names[team] : `${moment.name} · ${settings.names[team]}`, team, GOAL_BREAK);
       }
       updateScores();
@@ -298,6 +298,9 @@ async function start() {
     return item;
   }
   button('Enable audio', () => { setPreference('audio', 'auto'); audio.enable(true); });
+  const unlock = () => { if (settings.audio === 'auto' && audio.status === 'blocked') audio.enable(true); };
+  window.addEventListener('pointerdown', unlock, { signal });
+  unlockSound.addEventListener('click', unlock, { signal });
   button('Mute', () => setPreference('audio', 'muted'));
   button('Fullscreen', () => {
     const action = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
@@ -306,7 +309,11 @@ async function start() {
   const toggleDiagnostics = () => { diagnostics.hidden = !diagnostics.hidden; match.measure = !diagnostics.hidden || settings.mode === 'debug'; };
   button('Diagnostics', toggleDiagnostics);
   if (edit) {
-    const begin = () => { edit.begin(match.tick, performance.now()); logButton.textContent = 'Stop marker log'; };
+    const begin = () => {
+      if (awaitingRecording) { awaitingRecording = false; lastTime = 0; }
+      edit.begin(match.tick, performance.now());
+      logButton.textContent = 'Stop marker log';
+    };
     const finish = () => { logButton.textContent = 'Start marker log'; return edit.snapshot(performance.now(), true); };
     const logButton = button('Start marker log', () => { if (edit.active) finish(); else begin(); });
     const download = (extension: 'json' | 'srt') => {
@@ -325,7 +332,7 @@ async function start() {
     operator.append(editStatus);
     window.rushCapture = { begin, finish, audioTrack: () => audio.captureTrack(), status: () => ({ tick: match.tick, state: match.state, score: [...match.scores],
       fps: settings.fps, audio: audio.status, audioReady: audio.commentaryReady, speech: audio.commentaryPlayed, crowdReactions: audio.crowdReactions,
-      framing: view.framing(), arena: view.arena.get(match.tick), pitch: commentary.pitchTurn(match.tick), playing: edit.active }) };
+      framing: view.framing(), arena: view.arena.get(match.tick), booth: currentHost(), playing: edit.active }) };
   }
   button('Close', () => { operator.hidden = true; });
 
@@ -336,10 +343,16 @@ async function start() {
     if (ev.key === 'Escape') operator.hidden = true;
   }, { signal });
 
+  function currentHost() {
+    if (!onAir || match.tick >= hideCaption) return;
+    const { call, audible } = onAir;
+    return { id: call.id, host: call.host, reply: call.exchange?.reply, audible };
+  }
+
   function snapshot() {
     return { tick: match.tick, state: match.state, stateAge: match.tick - match.stateTick, scores: [...match.scores], restarted: !!checkpoint, seed: settings.seed,
       matchNumber: match.number, half: match.half, matchTicks: match.matchTicks, seriesGoals: [...match.seriesGoals], wins: [...match.wins], draws: match.draws, attack: [match.attack(0), match.attack(1)],
-      show: { moment: show.moment, celebration: show.getCelebration(match.tick), highlight: show.highlight?.label, captured: replay.captured, replayFrames: replay.frameCount, replayFrame: replay.frameIndex, recap: show.recap, arena: view.arena.get(match.tick), pitch: commentary.pitchTurn(match.tick), framing: view.framing(), gestures: match.players.map(p => show.getGesture(p.id, match.tick)?.kind ?? null) },
+      show: { moment: show.moment, celebration: show.getCelebration(match.tick), highlight: show.highlight?.label, captured: replay.captured, replayFrames: replay.frameCount, replayFrame: replay.frameIndex, recap: show.recap, arena: view.arena.get(match.tick), booth: currentHost(), framing: view.framing(), gestures: match.players.map(p => show.getGesture(p.id, match.tick)?.kind ?? null) },
       restartTeam: match.restartTeam, goalId: match.goalId, owner: match.owner?.id ?? null, ballVisible: match.ballVisible, physicsMs: match.physicsMs,
       render: view.info(), resources: match.resources(), audio: audio.status, commentaryReady: audio.commentaryReady, commentaryPlayed: audio.commentaryPlayed, lastSpoken: audio.lastSpoken, effectsPlayed: audio.effectsPlayed, accentsPlayed: audio.accentsPlayed, voices: audio.activeVoices, maxVoices: 10, droppedSeconds, measuredFrames, frameBuckets: [...frameBuckets],
       stats: match.stats, ball: match.currentBall, flight: match.flight, history: match.history, players: match.players.map(({ id, team, role, number, x, z, intent, pose, keeperReady }) => ({ id, team, role, number, x, z, intent, keeperReady, pose: pose?.kind ?? null, poseAge: pose?.age ?? null })) };
@@ -364,7 +377,17 @@ async function start() {
     const goalTheme = goalTeam === undefined ? '' : String(goalTeam);
     if (hud.dataset.goalTeam !== goalTheme) hud.dataset.goalTeam = goalTheme;
     if (!overlay.hidden && match.tick > hideCallout) overlay.hidden = true;
-    if (!caption.hidden && (match.tick >= hideCaption || (captionPitch && match.state !== 'live'))) caption.hidden = true;
+    if (!caption.hidden && match.tick >= hideCaption) caption.hidden = true;
+    if (onAir && match.tick < hideCaption) {
+      const { call } = onAir;
+      const elapsed = (match.tick - onAir.tick) / 60;
+      if (!onAir.audible && audio.commentaryReady && audio.status === 'on' && audio.speak(call.id, call.priority, elapsed)) {
+        onAir.audible = true;
+        edit?.markAudible(call.id);
+      }
+      if (!hud.hidden && !caption.hidden) booth.draw(call.host, match.tick, audio.mouthLevel(call.id, elapsed), caption.dataset.intro === 'true');
+    }
+    unlockSound.hidden = production || match.tick < 90 || audio.status !== 'blocked';
     if (!report.hidden && match.tick > hideReport) report.hidden = true;
     if (!report.hidden && !reportKickoff.hidden) {
       const untilKickoff = hideReport - match.tick;
@@ -408,11 +431,12 @@ async function start() {
     if (view.lost && !match.persistentFault) callout('DISPLAY RECOVERY', 'Restoring the stadium', 0, 100);
   }
 
-  function updatePlayerNames(pitch?: PitchTurn) {
-    tags.hidden = !pitch || view.camera.mode !== 'conversation';
-    if (!pitch || tags.hidden) return;
-    const marks = [view.namePoint(pitch.speaker), view.namePoint(pitch.listener)];
-    const names = [match.players[pitch.speaker], match.players[pitch.listener]];
+  function updatePlayerNames() {
+    tags.hidden = view.camera.mode !== 'two-player';
+    if (tags.hidden) return;
+    const subjects = view.camera.subjects;
+    const marks = subjects.map(id => view.namePoint(id));
+    const names = subjects.map(id => match.players[id]);
     const ball = view.framing();
     for (const [index, tag] of players.entries()) {
       const { x, y } = marks[index];
@@ -434,13 +458,13 @@ async function start() {
     lastTime = now;
     const capped = Math.min(gap, 0.25);
     droppedSeconds += gap - capped;
-    accumulator += capped;
+    if (!awaitingRecording) accumulator += capped;
     for (let step = 0; accumulator + 1e-7 >= STEP && step < 15; step++) {
       match.step();
       if (edit?.active) edit.advance(match.tick, performance.now());
       for (const event of match.events) react(event);
       radio(commentary.countdown(match.tick, match.scores));
-      radio(commentary.advancePitch(match.tick, match.state === 'live'));
+      radio(commentary.advanceBooth(match.tick, match.state === 'live'));
       accumulator = Math.max(0, accumulator - STEP);
     }
     if (match.tick >= nextSave) { nextSave = match.tick + 900; persist(); }
@@ -455,9 +479,8 @@ async function start() {
         const bucket = [12, 19, 28, 39, 56, 100, 250].findIndex(threshold => elapsed < threshold);
         frameBuckets[bucket === -1 ? 7 : bucket]++;
       }
-      const pitch = commentary.pitchTurn(match.tick);
-      view.draw(match, Math.min(1, accumulator / STEP), Math.min(0.13, elapsed / 1000), elapsed, settings.fps, show, pitch);
-      if (production) updatePlayerNames(pitch);
+      view.draw(match, Math.min(1, accumulator / STEP), Math.min(0.13, elapsed / 1000), elapsed, settings.fps, show);
+      if (production) updatePlayerNames();
       if (match.state !== 'halftime' && match.state !== 'fulltime') replay.capture(match.tick, show.highlight, captureFrame);
       lastRender = now;
     }
@@ -467,8 +490,7 @@ async function start() {
       const actors = lead !== undefined ? [lead] : rivals.hidden
         ? [...view.camera.subjects.slice(0, 2), moment?.player, moment?.opponent, recapCard.hidden ? undefined : show.recap?.player]
         : CAPTAINS;
-      const talking = !caption.hidden && captionPitch;
-      layout.update(view.screenPoints(talking ? [...actors, talking.speaker, talking.listener] : actors));
+      layout.update(view.screenPoints(actors));
     }
   }
 

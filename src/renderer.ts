@@ -3,7 +3,6 @@ import { ArticulatedInstances, box, mesh, plane, softShadowMaterial } from './ar
 import { ArenaShow } from './arena-show';
 import { Character } from './characters';
 import { BroadcastCamera } from './camera';
-import type { PitchTurn } from './commentary';
 import { clamp, damp, mix, Random } from './football';
 import type { MatchEvent, Point } from './football';
 import type { Match } from './match';
@@ -161,19 +160,18 @@ export class BroadcastRenderer {
     if (this.sparkMesh.instanceColor) this.sparkMesh.instanceColor.needsUpdate = true;
   }
 
-  draw(match: Match, alpha: number, dt: number, observedInterval: number, target: number, show: MatchShow, pitch?: PitchTurn) {
+  draw(match: Match, alpha: number, dt: number, observedInterval: number, target: number, show: MatchShow) {
     if (this.lost) return;
     const started = performance.now();
     const time = (match.tick + alpha) / 60;
     const celebration = show.getCelebration(match.tick);
+    const pair = match.state === 'live' ? this.camera.actionPair(match.tick) : undefined;
     for (let i = 0; i < this.chars.length; i++) {
       const ch = this.chars[i];
-      const talking = i === pitch?.speaker;
-      const talk = pitch && (talking || i === pitch.listener) ? {
-        partner: match.players[talking ? pitch.listener : pitch.speaker], elapsed: time - pitch.tick / 60,
-        duration: pitch.duration / 60, speaking: talking,
+      const glance = pair && (i === pair.player || i === pair.partner) ? {
+        partner: match.players[i === pair.player ? pair.partner : pair.player], elapsed: time - pair.tick / 60,
       } : undefined;
-      ch.animate(alpha, time, dt, show.getGesture(i, match.tick), this.camera.focus === i, match.owner?.id === i, talk);
+      ch.animate(alpha, time, dt, show.getGesture(i, match.tick), this.camera.focus === i, match.owner?.id === i, glance);
       this.shadows[i].position.x = ch.root.position.x + 0.10;
       this.shadows[i].position.z = ch.root.position.z - 0.085;
     }
@@ -216,7 +214,7 @@ export class BroadcastRenderer {
       this.impactRing.scale.setScalar(0.58 + impactAge * 1.94);
       this.impactRing.material.opacity = 0.8 * (1 - impactAge / 0.55);
     }
-    this.camera.update(match, dt, show, pitch, this.positions);
+    this.camera.update(match, dt, show, this.positions);
     this.renderer.render(this.scene, this.camera.camera);
     this.frames++;
     const smooth = damp(2.1, dt);

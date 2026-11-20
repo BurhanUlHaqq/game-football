@@ -3,11 +3,16 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { availableParallelism, freemem } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { cartoonVoice } from './cartoon-voice.mjs';
 
 const tooling = new URL('../.tooling/commentary/package.json', import.meta.url);
 const require = createRequire(tooling);
 const wav = new URL('../public/voice/rush-radio.wav', import.meta.url);
 const cueFile = new URL('../src/commentary-cues.json', import.meta.url);
+const cache = new URL('../.tooling/', import.meta.url);
+const guideBank = new URL('rush-radio-dry.wav', cache);
+const guideCues = new URL('rush-radio-dry-cues.json', cache);
+const guideLines = new URL('rush-radio-dry-lines.json', cache);
 const rate = 24000;
 const padding = Math.round(rate * .12);
 
@@ -65,15 +70,27 @@ function generate(entries) {
   })));
 }
 
-async function prependExisting(entries) {
-  if (!process.argv.includes('--append')) return { cues: {}, chunks: [], total: 0 };
-  const [track, cueJSON] = await Promise.all([readFile(wav), readFile(cueFile, 'utf8')]);
-  const cues = JSON.parse(cueJSON);
-  const ids = Object.keys(cues);
+async function cachedGuides(entries) {
+  const clips = new Map();
+  if (!process.argv.includes('--append')) return clips;
+  let files;
+  try {
+    files = await Promise.all([readFile(guideBank), readFile(guideCues, 'utf8'), readFile(guideLines, 'utf8')]);
+  } catch (error) {
+    if (error.code === 'ENOENT') return clips;
+    throw error;
+  }
+  const [track, map, manifest] = files;
+  const cues = JSON.parse(map), lines = JSON.parse(manifest);
   if (track.toString('ascii', 0, 4) !== 'RIFF' || track.readUInt32LE(24) !== rate || track.readUInt16LE(22) !== 1 ||
-    track.readUInt16LE(34) !== 16 || track.length !== 44 + track.readUInt32LE(40) ||
-    ids.some((id, i) => entries[i]?.[0] !== id)) throw new Error('Existing bank must match the unchanged opening lines to append');
-  return { cues, chunks: [track.subarray(44)], total: (track.length - 44) / 2 };
+      track.readUInt16LE(34) !== 16 || track.length !== 44 + track.readUInt32LE(40)) return clips;
+  for (const [id, line] of entries) {
+    if (lines[id]?.text !== line.text || lines[id]?.voice !== line.voice || !cues[id]) continue;
+    const [offset, seconds] = cues[id];
+    const start = 44 + Math.round(rate * offset) * 2, end = start + Math.round(rate * seconds) * 2;
+    if (start >= 44 && end > start && end <= track.length) clips.set(id, track.subarray(start, end));
+  }
+  return clips;
 }
 
 if (process.argv.includes('--worker') && process.send) {
@@ -85,15 +102,20 @@ if (process.argv.includes('--worker') && process.send) {
   });
 } else {
   const entries = Object.entries(JSON.parse(await readFile(new URL('../src/commentary-lines.json', import.meta.url), 'utf8')));
-  const { cues, chunks, total: firstFrame } = await prependExisting(entries);
-  let total = firstFrame;
-  const additions = entries.slice(Object.keys(cues).length);
-  const clips = new Map(additions.length ? (await generate(additions)).flat() : []);
-  for (const [id] of additions) {
-    const pcm = Buffer.from(clips.get(id));
+  const clips = await cachedGuides(entries);
+  const missing = entries.filter(([id]) => !clips.has(id));
+  if (missing.length) {
+    for (const [id, bytes] of (await generate(missing)).flat()) clips.set(id, Buffer.from(bytes));
+  }
+  const cues = {}, chunks = [], guides = [];
+  let total = 0;
+  for (const [id, line] of entries) {
+    const guide = clips.get(id);
+    const pcm = cartoonVoice(guide, line, id, rate);
     const frames = pcm.length / 2;
     cues[id] = [total / rate, frames / rate];
     chunks.push(pcm);
+    guides.push(guide);
     total += frames;
   }
 
@@ -102,8 +124,11 @@ if (process.argv.includes('--worker') && process.send) {
   header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); header.writeUInt16LE(1, 22);
   header.writeUInt32LE(rate, 24); header.writeUInt32LE(rate * 2, 28); header.writeUInt16LE(2, 32);
   header.writeUInt16LE(16, 34); header.write('data', 36); header.writeUInt32LE(total * 2, 40);
+  const cueText = `${JSON.stringify(cues, null, 2)}\n`;
   await mkdir(new URL('../public/voice/', import.meta.url), { recursive: true });
-  await writeFile(wav, Buffer.concat([header, ...chunks]));
-  await writeFile(cueFile, `${JSON.stringify(cues, null, 2)}\n`);
-  console.log(`Packed ${Object.keys(cues).length} clips with Kokoro ${require('./node_modules/kokoro-js/package.json').version}.`);
+  await mkdir(cache, { recursive: true });
+  await Promise.all([writeFile(wav, Buffer.concat([header, ...chunks])), writeFile(cueFile, cueText),
+    writeFile(guideBank, Buffer.concat([header, ...guides])), writeFile(guideCues, cueText),
+    writeFile(guideLines, JSON.stringify(Object.fromEntries(entries)))]);
+  console.log(`Rendered ${entries.length} cartoon voiceovers with phonetic guides from Kokoro ${require('./node_modules/kokoro-js/package.json').version}.`);
 }

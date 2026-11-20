@@ -1,7 +1,7 @@
 import cues from './commentary-cues.json';
 import { MATCH_TICKS } from './football';
 import type { MatchEvent, Score, Team } from './football';
-import type { CommentaryCall } from './commentary';
+import type { BoothHost, CommentaryCall } from './commentary';
 import type { ShowMoment } from './show';
 import { CAST } from './show';
 
@@ -12,6 +12,7 @@ type Caption = Position & { endSeconds: number; id: string; speaker: string; lis
 type Marker = Position & {
   kind: string; label?: string; team?: Team; player?: Participant; opponent?: Participant; detail?: string; description?: string;
   technique?: string; held?: boolean; rank?: number; beat?: 'setup' | 'rematch' | 'payoff'; exchangeEndSeconds?: number;
+  hosts?: [BoothHost, BoothHost];
 };
 const markedEvents = new Set(['match-start', 'half-start', 'halftime', 'fulltime', 'goal', 'shot', 'save', 'post', 'tackle', 'interception', 'recovery']);
 const maximumEntries = 16000;
@@ -24,7 +25,7 @@ export class ProductionLog {
   private markers: Marker[] = [];
   private captions: Caption[] = [];
   private openCaption?: { caption: Caption; until: number };
-  private opening?: { position: Position; player: number; opponent: number };
+  private opening?: { position: Position; id: string; host: BoothHost; player?: number; opponent?: number };
   private reply?: { marker: Marker; until: number };
   private truncated = false;
 
@@ -67,21 +68,25 @@ export class ProductionLog {
     if (!this.active) return;
     this.closeCaption(stamp.now);
     const position = this.position(stamp);
-    const turn = call.pitch;
+    const turn = call.exchange;
     const caption = { ...position, endSeconds: position.recordingSeconds, id: call.id, speaker: call.host,
-      listener: turn ? CAST[turn.listener] : undefined, text: call.text, audible };
+      listener: turn ? (call.host === 'MICK' ? 'EMMA' : 'MICK') : undefined, text: call.text, audible };
     this.add(this.captions, caption);
     this.openCaption = { caption, until: captionUntil };
     if (!turn) { this.clearExchange(); return; }
     if (!turn.reply) {
-      this.opening = { position, player: turn.speaker, opponent: turn.listener };
+      this.opening = { position, id: call.id, host: call.host, player: turn.player, opponent: turn.opponent };
       return;
     }
     const opening = this.opening;
     this.opening = undefined;
-    if (!opening || opening.player !== turn.listener || opening.opponent !== turn.speaker) return;
-    this.reply = { until: turn.tick + Math.ceil(cues[call.id][1] * 60), marker: { ...opening.position, kind: 'exchange',
-      label: turn.kind === 'Rival' ? 'Rival exchange' : 'Team exchange', player: participant(opening.player), opponent: participant(opening.opponent) } };
+    if (!opening || opening.id !== turn.opening || opening.host === call.host) return;
+    this.reply = { until: stamp.tick + Math.ceil(cues[call.id][1] * 60), marker: { ...opening.position, kind: 'exchange',
+      label: 'Commentary booth', hosts: [opening.host, call.host], player: participant(opening.player), opponent: participant(opening.opponent) } };
+  }
+
+  markAudible(id: string) {
+    if (this.openCaption?.caption.id === id) this.openCaption.caption.audible = true;
   }
 
   advance(tick: number, now: number) {

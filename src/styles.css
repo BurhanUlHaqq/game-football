@@ -51,18 +51,13 @@ html, body, #broadcast, #scene { width: 100%; height: 100%; margin: 0; overflow:
 .rivals > div:last-child { text-align: right; background: #254c53; color: #a6f8df; }
 .rivals small { color: #fff3e4; font-size: .53em; font-weight: 830; letter-spacing: .10em; white-space: nowrap; }
 .commentary { position: absolute; left: 50%; bottom: clamp(12px, 3vh, 64px); transform: translateX(-50%); width: max-content; max-width: min(55vw, 1600px); display: flex; align-items: center; gap: .8em; padding: .63em 1.22em .67em .76em; border: 1px solid #fbeacd48; border-radius: .77em; background: #282236ee; box-shadow: 0 .40em 1.1em #26182e64; font-size: clamp(10px, .95vw, 36px); }
-.radio-mark { display: flex; flex: 0 0 1.85em; height: 1.75em; align-items: center; justify-content: center; gap: .17em; border-radius: .37em; background: #fecc941d; }
-.radio-mark i { width: .13em; height: .65em; border-radius: 10px; background: #ffce95; transform-origin: center; animation: radio-wave 850ms ease-in-out infinite alternate; }
-.radio-mark i:nth-child(2) { height: 1em; animation-delay: -400ms; }
-.radio-mark i:nth-child(3) { height: .80em; animation-delay: -250ms; }
-.radio-mark i:nth-child(4) { height: .48em; animation-delay: -630ms; }
-@keyframes radio-wave { 0%, 20% { transform: scaleY(.48); } 65% { transform: scaleY(.84); } 100% { transform: scaleY(1.1); } }
+#sound-unlock { position: absolute; right: 3%; top: 11%; z-index: 3; pointer-events: auto; padding: .5em .85em; border: 1px solid #ffd388; border-radius: 1.2em; color: #ffe4b0; background: #292139f2; font: 750 clamp(11px, 1vw, 24px)/1.2 system-ui, sans-serif; cursor: pointer; }
 .radio-copy { min-width: 0; }
 .radio-copy small { display: block; margin-bottom: .22em; color: #ffd29b; font-size: .57em; font-weight: 900; letter-spacing: .17em; }
 #commentary-host { display: inline-block; margin-left: .51em; padding-left: .58em; border-left: 1px solid #a993a5; color: #e5d5e8; }
-.commentary[data-channel='pitch'] .radio-mark { display: none; }
-#commentary-portrait { flex: 0 0 2.8em; width: 2.8em; height: auto; border-radius: .35em; }
-.commentary[data-channel='pitch'] #commentary-host { color: var(--goal-color); font-size: 1.2em; letter-spacing: .04em; }
+#commentary-booth { flex: 0 0 auto; width: 7em; height: auto; border-radius: .35em; box-shadow: 0 0 0 1px #fff1c645; }
+.commentary #commentary-host { color: #ffd087; font-size: 1.22em; letter-spacing: .04em; }
+.commentary[data-host='EMMA'] #commentary-host { color: #9ef3d2; }
 #commentary-text { color: #fff4e8; font-size: .91em; font-weight: 600; }
 .match-report { position: absolute; left: 50%; bottom: clamp(82px, 10.9vh, 244px); transform: translateX(-50%); width: clamp(308px, 35vw, 1344px); max-width: 94vw; padding: .76em 1em .70em; border: 1px solid #f4d1a77d; border-top: .23em solid #ffc284; border-radius: .78em; background: #251e37f5; box-shadow: 0 .55em 1.64em #20172b70; font-size: clamp(12px, 1.1vw, 40px); }
 .report-header, .report-stats, .report-footer { display: flex; align-items: center; justify-content: space-between; gap: .62em; }
@@ -201,7 +196,7 @@ html, body, #broadcast, #scene { width: 100%; height: 100%; margin: 0; overflow:
   .match-report[data-phase='fulltime'] { left: 50%; right: auto; top: auto; bottom: 8px; transform: translateX(-50%); }
   .match-report[data-phase='fulltime']:has(.highlight[hidden]) { left: auto; right: 8px; width: min(169px, 44vw); transform: none; }
 }
-@media (prefers-reduced-motion: reduce) { .callout, .radio-mark i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .callout { animation: none; } }
 
 #broadcast[data-mode='capture'] {
   --capture-caption-size: min(3.45vw, 6.15vh);
@@ -220,12 +215,15 @@ html, body, #broadcast, #scene { width: 100%; height: 100%; margin: 0; overflow:
   inset: auto auto var(--capture-bottom) 50%; transform: translateX(-50%); width: max-content; max-width: 87%;
 }
 #broadcast[data-mode='capture'] .commentary { font-size: var(--capture-caption-size); gap: .38em; padding: .28em .50em .34em; background: #1e172df5; border-radius: .45em; }
-#broadcast[data-mode='capture'] .commentary :is(.radio-mark, #commentary-channel) { display: none; }
-#broadcast[data-mode='capture'] #commentary-portrait { flex-basis: 1.25em; width: 1.25em; }
+#broadcast[data-mode='capture'] #commentary-channel { display: none; }
+#broadcast[data-mode='capture'] #commentary-booth { width: 3.15em; border-radius: .18em; }
+#broadcast[data-mode='capture'] .commentary[data-intro='true'] #commentary-booth { width: 4.8em; }
 #broadcast[data-mode='capture'] .radio-copy small { margin: 0; line-height: 1.05; }
 #broadcast[data-mode='capture'] #commentary-host { border: 0; padding: 0; margin: 0; font-size: 1.17em; letter-spacing: .015em; }
 #broadcast[data-mode='capture'] #commentary-event { font-size: .39em; letter-spacing: .04em; }
 #broadcast[data-mode='capture'] #commentary-text { font-size: 1em; line-height: 1.12; }
+#broadcast[data-mode='capture'] .commentary[data-subtitles='off'].hud-float { left: 5%; transform: none; padding: .12em; }
+#broadcast[data-mode='capture'] .commentary[data-subtitles='off'] .radio-copy { display: none; }
 #broadcast[data-mode='capture'] .callout { font-size: calc(var(--capture-caption-size) * .65); padding: .40em .78em; background: #1e172df5; }
 #broadcast[data-mode='capture'] #event-detail { display: none; }
 #broadcast[data-mode='capture'] .match-report { inset: auto auto 24% 50%; transform: translateX(-50%); width: min(70%, 117vh); padding: .58em .7em; font-size: min(2.0vw, 3.56vh); }
@@ -239,6 +237,7 @@ html, body, #broadcast, #scene { width: 100%; height: 100%; margin: 0; overflow:
 }
 #capture-players span[data-team='1'] { color: #bcffe9; background: #154b4def; }
 @media (orientation: portrait) {
+  #broadcast[data-mode='capture'] #commentary-booth { width: 2.8em; }
   #broadcast[data-mode='capture'] { --capture-caption-size: 4.25vw; --capture-bottom: 18%; }
   #broadcast[data-mode='capture'] .masthead { inset: 7% 5% auto; }
   #broadcast[data-mode='capture'] .scoreboard { width: 94%; font-size: 3.6vw; }

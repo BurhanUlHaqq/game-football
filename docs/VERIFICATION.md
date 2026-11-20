@@ -2,7 +2,17 @@
 
 The updated build was tested on Windows 11 26H2 x64 with an Intel Core Ultra 7 255H, Intel Arc 140T graphics, Node.js 24.22.3 and Chrome 157.0.8103.79. Chrome reported Intel graphics through ANGLE/D3D11.
 
-## Sideline camera and streaming capture
+## Mick and Emma in the commentary booth
+
+The packaged 24 kHz voice track contains 452 distinct audible clips, with 226 for each host and 32 scripted two-host exchanges. The automated tests check clip boundaries, signal levels, unique captions, matching replies, speaker credits, and interruption by goals and stoppages. An offline English recognizer matched 12 sampled performances to their scripts from a limited list of phrases. A byte comparison confirmed that those takes are in the game.
+
+Eight consecutive 20-minute fixtures on the default seed selected 297 different recordings and completed 124 booth exchanges with zero simulation faults. Separate full fixtures on three seeds each selected between 100 and 108 distinct recordings.
+
+A 40-second recording from kickoff contains eight audible calls. Emma introduces the booth, Mick answers her, and the hosts call a shot, an own goal, a steal and a keeper block. The video contains 1920×1080 H.264 at 30 fps with the game's stereo AAC mix. [Watch the match](../artifacts/rush-arena-booth-preview.mp4) · [Hear ten voice clips](../artifacts/rush-radio-preview.mp3)
+
+Chrome also captured both voices in a 1080×1920 layout with caption text enabled and disabled. The booth animated during speech, the exported captions named the two hosts, and the booth stayed clear of the ball during the sampled opening exchange. [Vertical booth view](../artifacts/commentary-booth-vertical.png)
+
+## Earlier sideline camera and streaming capture
 
 Strict TypeScript, ESLint, the production build, and all 35 automated tests passed. On comparable samples from the first two minutes of the default match, the player nearest the ball grew from a median 7.4% to 21% of the picture height in landscape and from 5% to 23% in vertical.
 
@@ -16,7 +26,7 @@ The 24-second preview includes a save, a shot off the post, a goal, and two exch
 
 Strict TypeScript, ESLint, the production build, and all 34 automated tests passed. The voice bank has 365 distinct captions and 365 non-silent PCM clips, including 257 new clips. Across three simulated matches, all ten players spoke in each fixture and the scheduler used 109 distinct new clips. The simulations recorded zero faults.
 
-Chrome rendered all ten player rigs and matching portraits, captured the supporters at kickoff, and kept the ball visible in the sampled 1080×1920 recording view. After audio was enabled, the default match played three new clips in its first 24 simulated seconds. Those included on-field calls from Dash and Patch and an announcer's reaction to an own goal. The 1920×1080 sample averaged 29.2 frames per second at a 30 fps target with zero browser errors or simulation faults. [Player lineup](../artifacts/rush-arena-npc-lineup.png) · [Supporters](../artifacts/rush-arena-supporters.png) · [Voice sampler](../artifacts/rush-radio-preview.mp3)
+Chrome rendered all ten player rigs and matching portraits, captured the supporters at kickoff, and kept the ball visible in the sampled 1080×1920 recording view. After audio was enabled, the default match played three new clips in its first 24 simulated seconds. Those included on-field calls from Dash and Patch and an announcer's reaction to an own goal. The 1920×1080 sample averaged 29.2 frames per second at a 30 fps target with zero browser errors or simulation faults. [Player lineup](../artifacts/rush-arena-npc-lineup.png) · [Supporters](../artifacts/rush-arena-supporters.png)
 
 ## Earlier sky and park surroundings
 

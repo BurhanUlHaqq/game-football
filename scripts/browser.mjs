@@ -46,13 +46,13 @@ async function monitorSmallScreen(page) {
     let overlaps = 0;
     let clipped = 0;
     let duplicate = 0;
-    let pitchCaptions = 0;
+    let boothCaptions = 0;
     const started = performance.now();
     const timer = setInterval(() => {
       const { framing } = window.rush.snapshot().show;
       if (performance.now() - started > 42000) {
         clearInterval(timer);
-        resolve({ samples, overlaps, clipped, duplicate, pitchCaptions, seen });
+        resolve({ samples, overlaps, clipped, duplicate, boothCaptions, seen });
         return;
       }
       if (!framing.ballVisible) return;
@@ -68,7 +68,7 @@ async function monitorSmallScreen(page) {
         if (x > box.left && x < box.right && y > box.top && y < box.bottom) overlaps++;
       });
       const heading = document.querySelector('#commentary-event');
-      if (visible[1] && elements[1].dataset.channel === 'pitch') pitchCaptions++;
+      if (visible[1] && elements[1].dataset.channel === 'booth') boothCaptions++;
       if (visible[1] && visible[2] && !heading.hidden && heading.textContent.startsWith(`${document.querySelector('#event-label').textContent} · ${document.querySelector('#event-text').textContent}`)) duplicate++;
     }, 140);
   }));
@@ -190,14 +190,14 @@ try {
     assert.ok((await snapshot(page)).render.frames > beforeRender);
 
     await page.keyboard.press('d');
-    await page.keyboard.press('o');
-    await page.getByRole('button', { name: 'Enable audio' }).click();
+    await page.getByRole('button', { name: 'Turn sound on' }).click();
     await waitUntil(page, () => window.rush.snapshot().audio === 'on');
     await waitUntil(page, () => {
       const audio = window.rush.snapshot();
       return audio.commentaryPlayed > 0 && audio.effectsPlayed > 0 && audio.accentsPlayed > 0 && window.outputLevel() > 0.005;
     }, 40000);
     const audible = await snapshot(page);
+    await page.keyboard.press('o');
     await page.getByRole('button', { name: 'Mute' }).click();
     await waitUntil(page, () => window.rush.snapshot().audio === 'muted');
     await waitUntil(page, () => window.outputLevel() < 0.0005);
@@ -389,7 +389,7 @@ try {
       await phone.screenshot({ path: 'artifacts/phone-goalmouth.png' });
       const sightlines = await phoneMonitoring;
       assert.ok(sightlines.samples >= 180 && sightlines.seen['#rivals'] > 0 && sightlines.seen['#commentary'] > 0 && sightlines.seen['#callout'] > 0);
-      assert.ok(sightlines.pitchCaptions > 0, 'Pitch captions appear in muted play');
+      assert.ok(sightlines.boothCaptions > 0, 'Booth captions appear in muted play');
       assert.equal(sightlines.clipped + sightlines.overlaps + sightlines.duplicate, 0);
       await phone.keyboard.press('o');
       await phone.getByRole('button', { name: 'Enable audio' }).click();
@@ -409,16 +409,17 @@ try {
       await waitUntil(phone, () => {
         const state = window.rush.snapshot();
         const caption = document.querySelector('#commentary');
-        return state.show.pitch?.reply && /(?:Team|Rival)Reply$/.test(state.lastSpoken ?? '') && caption.dataset.channel === 'pitch' &&
+        const turn = state.show.booth;
+        return turn?.reply && turn.audible && turn.id === state.lastSpoken && caption.dataset.host === turn.host &&
           !caption.hidden && getComputedStyle(caption).visibility !== 'hidden';
       }, 65000);
       const characterAudio = await snapshot(phone);
-      await phone.screenshot({ path: 'artifacts/pitch-talk-phone.png' });
+      await phone.screenshot({ path: 'artifacts/commentary-booth-phone.png' });
       await phone.setViewportSize({ width: 390, height: 844 });
       await waitUntil(phone, () => window.rush.snapshot().render.viewportHeight === 844);
       assert.ok(await phone.locator('#clock').isVisible());
       await phone.screenshot({ path: 'artifacts/phone-portrait.png' });
-      record('phone', { landscape: [390, 220], portrait: [390, 844], camera: action.show.framing, event: action.show.moment.kind, sightlines, recap: recapText, sound: [action.audio, characterAudio.audio], cast: characterAudio.lastSpoken });
+      record('phone', { landscape: [390, 220], portrait: [390, 844], camera: action.show.framing, event: action.show.moment.kind, sightlines, recap: recapText, sound: [action.audio, characterAudio.audio], host: characterAudio.show.booth.host, line: characterAudio.lastSpoken });
     } finally { await phoneContext.close(); }
   }
   assert.ok([...requests].every(r => r.startsWith(origin) || r.startsWith('data:')));

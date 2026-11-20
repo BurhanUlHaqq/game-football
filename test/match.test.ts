@@ -383,7 +383,7 @@ test('the 20-minute whistle records one final result and starts a new scoreboard
 
 test('commentary reacts to goals and periods while suppressing continuous play-by-play chatter', () => {
   const radio = new Commentary();
-  assert.equal(radio.react({ kind: 'match-start', tick: 52 }, [0, 0])?.id, 'opening');
+  assert.equal(radio.react({ kind: 'match-start', tick: 52 }, [0, 0])?.id, 'boothHello');
   assert.equal(radio.react({ kind: 'pass', tick: 82 }, [0, 0]), undefined);
   assert.equal(radio.react({ kind: 'goal', tick: 240, goalId: 1 }, [1, 0])?.id, 'goalTwo');
   assert.equal(radio.react({ kind: 'goal', tick: 270, goalId: 2 }, [1, 1])?.id, 'equalizer');
@@ -392,73 +392,52 @@ test('commentary reacts to goals and periods while suppressing continuous play-b
   assert.equal(radio.countdown(MATCH_TICKS * 2 - 3600)?.id, 'lastMinute');
 });
 
-test('pitch conversations use the real pass or challenge participants and wait for the reply', () => {
+test('each booth setup gets its own recorded answer from the other host after the clip ends', () => {
+  for (const [id, line] of Object.entries(lines)) {
+    if (!('answer' in line)) continue;
+    const answer = lines[line.answer as keyof typeof lines];
+    assert.ok(answer && line.voice !== answer.voice, id);
+  }
   const radio = new Commentary();
-  const score: [number, number] = [0, 0];
-  const tick = 540;
-  const pass = { kind: 'pass', tick, team: 0, player: 1, flight: { style: 'ground', to: { x: 0, z: 0 }, range: 6, seconds: 0.5, receiver: 2 } } as const;
-  radio.react({ ...pass, tick: tick - 40, flight: { ...pass.flight, receiver: 8 } }, score);
-  assert.equal(radio.advancePitch(tick - 17, true), undefined);
-  radio.react(pass, score);
-  assert.equal(radio.advancePitch(tick + 22, true), undefined);
-  const opener = radio.advancePitch(tick + 23, true);
-  assert.equal(opener?.id, 'pipTeamCall');
-  assert.equal(opener.host, 'Pip');
-  assert.equal(opener.pitch?.listener, 2);
-  const replyAt = tick + 23 + opener.ticks;
-  assert.equal(radio.advancePitch(replyAt - 1, true), undefined);
-  assert.equal(radio.react({ kind: 'tackle', tick: replyAt, team: 1, player: 8, opponent: 3 }, score), undefined);
-  const answer = radio.advancePitch(replyAt, true);
-  assert.equal(answer?.id, 'sunnyTeamReply');
-  assert.equal(answer.pitch?.reply, true);
-  assert.equal(answer.pitch?.listener, 1);
-  assert.equal(radio.pitchTurn(replyAt)?.speaker, 2);
-  assert.equal(radio.pitchTurn(replyAt + answer.ticks), undefined);
-
-  const clash = { kind: 'tackle', tick: 1000, team: 1, player: 6, opponent: 4 } as const;
-  radio.react(clash, score);
-  assert.equal(radio.advancePitch(clash.tick + 23, true), undefined);
-  radio.react({ ...clash, tick: 1700 }, score);
-  const challenge = radio.advancePitch(1723, true);
-  assert.equal(challenge?.id, 'crankRivalCall');
-  assert.equal(challenge.pitch?.listener, 4);
-  assert.equal(radio.advancePitch(1723 + challenge.ticks, true)?.id, 'boulderRivalReply');
-
-  radio.react({ ...pass, tick: 2800 }, score);
-  const nextOpener = radio.advancePitch(2823, true);
-  assert.equal(nextOpener?.id, 'pipTeamCallAlt1');
-  assert.equal(nextOpener.pitch?.listener, 2);
-  assert.equal(radio.advancePitch(2823 + nextOpener.ticks, true)?.id, 'sunnyTeamReplyAlt1');
+  const play = { kind: 'post', player: 7, tick: 620 } as const;
+  const opening = radio.react(play, [0, 0]);
+  assert.equal(opening?.id, 'postBooth');
+  assert.equal(opening.host, 'MICK');
+  const due = play.tick + opening.ticks;
+  assert.equal(radio.advanceBooth(due - 1, true), undefined);
+  assert.equal(radio.react({ kind: 'pass', tick: due }, [0, 0]), undefined);
+  const reply = radio.advanceBooth(due, true);
+  assert.equal(reply?.id, lines.postBooth.answer);
+  assert.equal(reply.host, 'EMMA');
+  assert.deepEqual(reply.exchange, { opening: opening.id, reply: true, player: 7, opponent: undefined });
+  assert.equal(radio.advanceBooth(due + 1, true), undefined);
 });
 
-test('announcer variants turn over on repeat plays and only describe the actual action', () => {
-  const radio = new Commentary();
+test('announcer variants rotate and name the actual player, save or delivery', () => {
   const score: [number, number] = [1, 0];
-  assert.equal(new Commentary('zeerush').react({ kind: 'match-start', tick: 52 }, [0, 0])?.id, 'openingAlt1');
-  const calls = [480, 1040, 1600].map(tick => radio.react({ kind: 'post', tick }, score)?.id);
-  assert.deepEqual(calls, ['post', 'postAlt1', 'postAlt2']);
-
-  assert.equal(new Commentary().react({ kind: 'save', tick: 880, player: 5, save: { move: 'tip', held: false } }, score)?.id, 'tipSave');
-  assert.equal(new Commentary().react({ kind: 'pass', tick: 1800, flight: {
-    style: 'switch', to: { x: 4, z: 9 }, range: 19, seconds: 1.4,
-  } }, score)?.id, 'switchPass');
+  const radio = new Commentary();
+  const pass = { kind: 'pass', player: 7, tick: 1200, flight: { style: 'ground', to: { x: 1, z: 0 }, range: 6, seconds: .5, receiver: 8 } } as const;
+  assert.equal(radio.react(pass, score)?.id, 'dashPass');
+  assert.equal(radio.react({ ...pass, tick: 2200 }, score)?.id, 'dashPassAlt1');
+  const tip = new Commentary().react({ kind: 'save', tick: 880, player: 5, save: { move: 'tip', held: false } }, score);
+  assert.equal(tip?.id, 'tipSave');
+  assert.equal(new Commentary().react({ ...pass, flight: { ...pass.flight, style: 'switch' } }, score)?.id, 'switchBooth');
   assert.equal(new Commentary().react({ kind: 'goal', tick: 600, player: 7, goalId: 1 }, score)?.id, 'dashGoal');
 });
 
-test('a goal or a dead ball cuts off a pitch exchange without replaying a stale line', () => {
+test('goals, dead balls and missed reply windows cancel an unfinished booth joke', () => {
   const radio = new Commentary();
   const score: [number, number] = [0, 0];
-  radio.react({ kind: 'interception', tick: 620, team: 1, player: 7, opponent: 1 }, score);
-  assert.equal(radio.advancePitch(643, true)?.id, 'dashRivalCall');
+  assert.equal(radio.react({ kind: 'post', tick: 620 }, score)?.id, 'postBooth');
   assert.equal(radio.react({ kind: 'goal', tick: 664, goalId: 1, team: 0 }, [1, 0])?.id, 'goalTwo');
-  assert.equal(radio.pitchTurn(664), undefined);
-  assert.equal(radio.advancePitch(950, true), undefined);
-
-  radio.react({ kind: 'tackle', tick: 1950, team: 0, player: 3, opponent: 8 }, score);
-  assert.equal(radio.advancePitch(1955, false), undefined);
-  assert.equal(radio.advancePitch(2050, true), undefined);
-  radio.react({ kind: 'tackle', tick: 2200, team: 0, player: 3, opponent: 8 }, score);
-  assert.equal(radio.advancePitch(2310, true), undefined);
+  assert.equal(radio.advanceBooth(950, true), undefined);
+  assert.equal(radio.react({ kind: 'post', tick: 2200 }, score)?.id, 'post');
+  assert.equal(radio.react({ kind: 'post', tick: 4050 }, score)?.id, 'postBoothAlt1');
+  assert.equal(radio.advanceBooth(4051, false), undefined);
+  assert.equal(radio.advanceBooth(4240, true), undefined);
+  const next = radio.react({ kind: 'post', tick: 8050 }, score);
+  assert.ok(next?.exchange);
+  assert.equal(radio.advanceBooth(8050 + next.ticks + 31, true), undefined);
 });
 
 test('capture markers preserve recording time, credits and full-time score at the fixture reset', () => {
@@ -479,24 +458,30 @@ test('capture markers preserve recording time, credits and full-time score at th
   assert.equal(capture.snapshot(10000)?.durationSeconds, 5.2);
 });
 
-test('capture exports sequential subtitles and counts an exchange after its reply finishes', () => {
+test('subtitles credit booth hosts and a finished exchange retains the players involved in the play', () => {
   const capture = new ProductionLog('zeerush', ['Roundhouse FC', 'Scruff FC']);
+  const radio = new Commentary();
   const stamp = (tick: number) => ({ now: 1000 + tick * 1000 / 60, tick, match: 1, matchTicks: tick, score: [0, 0] as [number, number] });
   capture.begin(0, 1000);
-  capture.call({ id: 'dashRivalCall', text: 'Whoosh!', host: 'Dash', priority: 2, ticks: 120,
-    pitch: { speaker: 7, listener: 4, kind: 'Rival', tick: 60, duration: 112, reply: false } }, stamp(60), 180, true);
-  capture.call({ id: 'boulderRivalReply', text: 'Nice move.', host: 'Boulder', priority: 2, ticks: 111,
-    pitch: { speaker: 4, listener: 7, kind: 'Rival', tick: 181, duration: 96, reply: true } }, stamp(181), 292, true);
-  capture.advance(230, stamp(230).now);
-  assert.equal(capture.snapshot(stamp(230).now)?.markers.length, 0);
-  capture.advance(300, stamp(300).now);
-  const result = capture.snapshot(stamp(300).now, true);
+  const call = radio.react({ kind: 'tackle', tick: 60, player: 7, opponent: 4 }, [0, 0]);
+  assert.ok(call?.exchange);
+  const due = 60 + call.ticks;
+  capture.call(call, stamp(60), due, false);
+  capture.markAudible(call.id);
+  const reply = radio.advanceBooth(due, true);
+  assert.ok(reply?.exchange?.reply);
+  capture.call(reply, stamp(due), due + reply.ticks, true);
+  capture.advance(due + 1, stamp(due + 1).now);
+  assert.equal(capture.snapshot(stamp(due + 1).now)?.markers.length, 0);
+  const end = due + reply.ticks;
+  capture.advance(end, stamp(end).now);
+  const result = capture.snapshot(stamp(end).now, true);
   assert.ok(result);
-  assert.equal(result.markers[0].kind, 'exchange');
-  assert.equal(result.markers[0].player?.name, 'Dash');
-  assert.equal(result.markers[0].opponent?.name, 'Boulder');
-  assert.equal(result.captions[0].listener, 'Boulder');
-  assert.match(subtitles(result.captions), /00:00:01,000 --> 00:00:03,017\nDash: Whoosh!/);
+  assert.deepEqual(result.markers[0].hosts, [call.host, reply.host]);
+  assert.deepEqual([result.markers[0].player?.name, result.markers[0].opponent?.name], ['Dash', 'Boulder']);
+  assert.equal(result.captions[0].listener, reply.host);
+  assert.equal(result.captions[0].audible, true);
+  assert.ok(subtitles(result.captions).includes(call.host + ': ' + call.text));
 });
 
 test('each commentary line has a non-silent cue within the bundled PCM track', () => {
@@ -510,7 +495,8 @@ test('each commentary line has a non-silent cue within the bundled PCM track', (
   assert.equal(track.length, 44 + bytes);
   assert.deepEqual(Object.keys(cues), Object.keys(lines));
   const captions = Object.values(lines).map(line => line.text);
-  assert.ok(captions.length >= 308);
+  assert.ok(captions.length > 400);
+  assert.deepEqual([...new Set(Object.values(lines).map(line => line.voice))].sort(), ['am_michael', 'bf_emma']);
   assert.equal(new Set(captions).size, captions.length);
   let cursor = 0;
   for (const [offset, duration] of Object.values(cues)) {
@@ -597,19 +583,19 @@ test('named calls use true event context and limit ordinary shot commentary', ()
   const save = { kind: 'save', tick: 600, player: 5, opponent: 4, team: 1 } as const;
   show.react({ kind: 'shot', tick: 510, player: 4, team: 0 }, score);
   const reaction = show.react(save, score);
-  assert.equal(commentary.react(save, score, reaction)?.id, 'boulderStretchAside');
+  assert.equal(commentary.react(save, score, reaction)?.id, 'boulderStretch');
   const secondSave = { ...save, tick: 1340 };
   const repeat = commentary.react(secondSave, score, show.react(secondSave, score));
-  assert.equal(repeat?.id, 'patchAside');
-  assert.equal(repeat?.host, 'PATCH');
+  assert.equal(repeat?.id, 'patchAgain');
+  assert.ok(repeat.host === 'MICK' || repeat.host === 'EMMA');
   const shot = { kind: 'shot', tick: 2800, player: 9, team: 1 } as const;
   assert.equal(commentary.react(shot, score)?.id, 'zipShot');
-  assert.equal(commentary.react({ ...shot, tick: 4500 }, score), undefined);
+  assert.equal(commentary.react({ ...shot, tick: 3410 }, score), undefined);
   const goal = { kind: 'goal', tick: 4950, player: 4, team: 0 } as const;
   assert.equal(commentary.react(goal, [1, 0], show.react(goal, [1, 0]))?.id, 'boulderPayback');
 });
 
-test('a fast save gets a standalone cast reaction and a standout save can outrank a routine goal', () => {
+test('a fast save gets a gesture and a booth call and a standout save can outrank a routine goal', () => {
   const score: [number, number] = [1, 0];
   const show = new MatchShow();
   const commentary = new Commentary();
@@ -620,7 +606,7 @@ test('a fast save gets a standalone cast reaction and a standout save can outran
   assert.equal(reaction?.joke, 'wave');
   assert.equal(show.getGesture(9, save.tick + 4)?.kind, 'wave');
   assert.equal(show.getGesture(0, save.tick + 20)?.kind, 'glove-pat');
-  assert.equal(commentary.react(save, score, reaction)?.host, 'ZIP');
+  assert.equal(commentary.react(save, score, reaction)?.id, 'zipWave');
   assert.equal(show.takeHighlight(false, HALF_TICKS)?.kind, 'save');
   assert.equal(commentary.react({ kind: 'halftime', tick: HALF_TICKS }, score, undefined, reaction)?.id, 'saveReplay');
 });
@@ -709,7 +695,7 @@ test('the action camera keeps the ball, shot taker, and keeper in frame at eithe
   } finally { match.dispose(); }
 });
 
-test('nearby speakers get a tighter two-player frame in the live stream and vertical recording', () => {
+test('nearby participants get a tighter two-player frame in the live stream and vertical recording', () => {
   const match = new Match('camera-conversation');
   try {
     untilLive(match);
@@ -723,8 +709,9 @@ test('nearby speakers get a tighter two-player frame in the live stream and vert
       const camera = new BroadcastCamera();
       camera.production = aspect < 1;
       camera.resize(aspect);
-      camera.update(match, STEP, show, { speaker: speaker.id, listener: listener.id, kind: 'Rival', tick: match.tick, duration: 120, reply: false });
-      assert.equal(camera.mode, 'conversation');
+      camera.react({ kind: 'tackle', tick: match.tick, player: speaker.id, opponent: listener.id });
+      camera.update(match, STEP, show);
+      assert.equal(camera.mode, 'two-player');
       assert.deepEqual(camera.subjects, [speaker.id, listener.id]);
       for (const player of [speaker, listener]) {
         const feet = new Vector3(player.x, 0, player.z).project(camera.camera);
