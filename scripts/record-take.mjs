@@ -32,8 +32,8 @@ try {
   await page.exposeBinding('writeTakeChunk', async (_source, encoded) => {
     await file.writeFile(Buffer.from(encoded, 'base64'));
   });
-  await page.goto(`${origin}/?mode=capture&session=new&start=record&fps=30&audio=auto&commentary=on&seed=${encodeURIComponent(seed)}&captions=${burnedCaptions ? 'on' : 'off'}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.rushCapture?.status().audioReady && window.rushCapture.status().audio === 'on');
+  await page.goto(`${origin}/?mode=capture&session=new&start=record&fps=30&audio=auto&music=on&commentary=on&seed=${encodeURIComponent(seed)}&captions=${burnedCaptions ? 'on' : 'off'}`, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => window.rushCapture?.status().audioReady && window.rushCapture.status().musicReady && window.rushCapture.status().audio === 'on');
   const start = await page.evaluate(async ({ title, viewport }) => {
     document.title = title;
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'browser', frameRate: { ideal: 30, max: 30 },

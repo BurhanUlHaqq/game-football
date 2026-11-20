@@ -14,7 +14,7 @@ type Marker = Position & {
   technique?: string; held?: boolean; rank?: number; beat?: 'setup' | 'rematch' | 'payoff'; exchangeEndSeconds?: number;
   hosts?: [BoothHost, BoothHost];
 };
-const markedEvents = new Set(['match-start', 'half-start', 'halftime', 'fulltime', 'goal', 'shot', 'save', 'post', 'tackle', 'interception', 'recovery']);
+const markedEvents = new Set(['match-start', 'half-start', 'halftime', 'fulltime', 'goal', 'shot', 'save', 'post', 'out', 'throw', 'tackle', 'interception', 'recovery']);
 const maximumEntries = 16000;
 const round = (n: number) => Math.round(n * 1000) / 1000;
 const participant = (id?: number) => id === undefined ? undefined : { id, name: CAST[id] };
@@ -56,10 +56,10 @@ export class ProductionLog {
 
   event(event: MatchEvent, stamp: Stamp, moment?: ShowMoment) {
     if (!this.active || !markedEvents.has(event.kind)) return;
-    if (event.kind === 'goal' || event.kind === 'halftime' || event.kind === 'fulltime' || event.kind === 'recovery') this.clearExchange();
+    if (event.kind === 'goal' || event.kind === 'halftime' || event.kind === 'fulltime' || event.kind === 'recovery' || event.kind === 'out') this.clearExchange();
     const position = this.position(event.summary ? { ...stamp, match: event.summary.number,
       matchTicks: event.kind === 'fulltime' ? MATCH_TICKS : stamp.matchTicks, score: event.summary.scores } : stamp);
-    this.add(this.markers, { ...position, kind: event.kind, label: moment?.label, team: event.team,
+    this.add(this.markers, { ...position, kind: event.kind, label: moment?.label ?? event.restart, team: event.team,
       player: participant(event.player), opponent: participant(event.opponent), detail: event.detail, description: moment?.story,
       held: event.save?.held, technique: event.save?.move ?? event.flight?.style, rank: moment?.rank, beat: moment?.beat });
   }
@@ -70,7 +70,7 @@ export class ProductionLog {
     const position = this.position(stamp);
     const turn = call.exchange;
     const caption = { ...position, endSeconds: position.recordingSeconds, id: call.id, speaker: call.host,
-      listener: turn ? (call.host === 'MICK' ? 'EMMA' : 'MICK') : undefined, text: call.text, audible };
+      listener: turn ? (call.host === 'JOM' ? 'JERRY' : 'JOM') : undefined, text: call.text, audible };
     this.add(this.captions, caption);
     this.openCaption = { caption, until: captionUntil };
     if (!turn) { this.clearExchange(); return; }

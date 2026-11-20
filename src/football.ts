@@ -3,9 +3,9 @@ export const HALF_TICKS = 10 * 60 * 60;
 export const MATCH_TICKS = HALF_TICKS * 2;
 export const HALFTIME_BREAK = 325;
 export const FULLTIME_BREAK = 10 * 60;
-export const GOAL_BREAK = 4 * 60;
+export const GOAL_BREAK = 330;
 export const KICKOFF_TICKS = 37;
-export const FIELD = { x: 22, z: 13, goal: 3.35, bar: 2.86, net: 2.65, board: 0.86, post: 0.105 };
+export const FIELD = { x: 22, z: 13, goal: 3.35, bar: 2.86, net: 2.65, board: 0.86, post: 0.105, runoff: 1.85, backHeight: 2.22 };
 export const BALL = 0.27;
 export const BALL_DAMPING = 0.11;
 export const GRAVITY = 9.81;
@@ -30,12 +30,12 @@ export type KickFlight = { style: KickStyle; to: Point; range: number; seconds: 
 export const distance = (a: Point, b: Point) => length(a.x - b.x, a.z - b.z);
 export type Role = 'keeper' | 'back' | 'wing' | 'captain';
 export type SaveMove = 'smother' | 'dive' | 'tip' | 'block';
-export type Action = 'pass' | 'shot' | 'receive' | 'intercept' | 'tackle' | 'stumble' | SaveMove | 'catch' | 'distribute' | 'celebrate' | 'concede';
-export type MatchState = 'setup' | 'live' | 'goal' | 'kickoff' | 'retrieval' | 'fault' | 'halftime' | 'fulltime';
-export type EventKind = 'pass' | 'shot' | 'interception' | 'tackle' | 'save' | 'distribution' | 'goal' | 'post' | 'board' | 'bounce' | 'footstep' | 'recovery' | 'kickoff' | 'halftime' | 'fulltime' | 'match-start' | 'half-start';
+export type Action = 'pass' | 'shot' | 'receive' | 'intercept' | 'tackle' | 'stumble' | SaveMove | 'catch' | 'distribute' | 'celebrate' | 'concede' | 'throw';
+export type MatchState = 'setup' | 'live' | 'goal' | 'kickoff' | 'throw-in' | 'retrieval' | 'fault' | 'halftime' | 'fulltime';
+export type EventKind = 'pass' | 'shot' | 'interception' | 'tackle' | 'save' | 'distribution' | 'goal' | 'out' | 'throw' | 'post' | 'board' | 'bounce' | 'footstep' | 'recovery' | 'kickoff' | 'halftime' | 'fulltime' | 'match-start' | 'half-start';
 export type MatchSummary = { number: number; scores: Score; shots: Score; saves: Score; standout?: number };
-export type MatchEvent = { kind: EventKind; tick: number; team?: Team; player?: number; opponent?: number; point?: Point3; goalId?: number; side?: number; detail?: string; summary?: MatchSummary; flight?: KickFlight; save?: { move: SaveMove; held: boolean } };
-export type Stats = { passes: number; shots: number; saves: number; interceptions: number; tackles: number; distributions: number; possessionChanges: number; rebounds: number; recoveries: number; faults: number; maxTemporaryTicks: number; peaks: Record<MatchState, number>; goals: [number, number]; byTeam: [{ passes: number; shots: number; saves: number }, { passes: number; shots: number; saves: number }] };
+export type MatchEvent = { kind: EventKind; tick: number; team?: Team; player?: number; opponent?: number; point?: Point3; goalId?: number; side?: number; detail?: string; summary?: MatchSummary; flight?: KickFlight; restart?: RestartKind; save?: { move: SaveMove; held: boolean } };
+export type Stats = { outs: number; throws: number; passes: number; shots: number; saves: number; interceptions: number; tackles: number; distributions: number; possessionChanges: number; rebounds: number; recoveries: number; faults: number; maxTemporaryTicks: number; peaks: Record<MatchState, number>; goals: [number, number]; byTeam: [{ passes: number; shots: number; saves: number }, { passes: number; shots: number; saves: number }] };
 
 export const ROSTER: ReadonlyArray<{ role: Role; number: number; x: number; z: number }> = [
   { role: 'keeper', number: 1, x: -20.1, z: 0 },
@@ -65,23 +65,39 @@ export class Random {
   range(min: number, max: number) { return mix(min, max, this.next()); }
 }
 
-export function crossedGoal(before: Point3, after: Point3): Team | null {
-  for (const team of [0, 1] as const) {
-    const attack = dir(team);
-    const from = before.x * attack;
-    const to = after.x * attack;
-    const plane = FIELD.x + BALL;
+export type RestartKind = 'Throw-in' | 'Keeper throw' | 'Corner throw';
+export type Crossing = { kind: 'goal' | 'wide' | 'over' | 'touchline'; side: number; point: Point3 };
+
+// Judge the first line cleared by the trailing edge, including a diagonal exit at a corner.
+export function pitchCrossing(before: Point3, after: Point3): Crossing | undefined {
+  if (Math.abs(before.x) >= FIELD.x + BALL || Math.abs(before.z) >= FIELD.z + BALL) return;
+  let first = Infinity;
+  let ruling: Crossing | undefined;
+  for (const axis of ['x', 'z'] as const) {
+    const side = Math.sign(after[axis]);
+    const from = before[axis] * side, to = after[axis] * side, plane = FIELD[axis] + BALL;
     if (from >= plane || to < plane) continue;
-    const entry = clamp((FIELD.x - BALL - from) / (to - from), 0, 1);
-    const exit = (plane - from) / (to - from);
-    const fits = (t: number) => {
-      const y = mix(before.y, after.y, t);
-      const z = mix(before.z, after.z, t);
-      return Math.abs(z) + BALL < FIELD.goal - FIELD.post && y + BALL < FIELD.bar - FIELD.post && y >= BALL - 0.06;
-    };
-    if (fits(entry) && fits(exit)) return team;
+    const t = (plane - from) / (to - from);
+    if (t >= first) continue;
+    first = t;
+    const at = (fraction: number) => ({ x: mix(before.x, after.x, fraction), y: mix(before.y, after.y, fraction), z: mix(before.z, after.z, fraction) });
+    const point = at(t);
+    if (axis === 'z') {
+      ruling = { kind: 'touchline', side, point };
+      continue;
+    }
+    const leading = at(clamp((FIELD.x - BALL - from) / (to - from), 0, 1));
+    const room = (p: Point3) => Math.abs(p.z) + BALL < FIELD.goal - FIELD.post;
+    const under = (p: Point3) => p.y + BALL < FIELD.bar - FIELD.post && p.y >= BALL - .06;
+    const kind = !room(leading) || !room(point) ? 'wide' : !under(leading) || !under(point) ? 'over' : 'goal';
+    ruling = { kind, side, point };
   }
-  return null;
+  return ruling;
+}
+
+export function crossedGoal(before: Point3, after: Point3): Team | null {
+  const ruling = pitchCrossing(before, after);
+  return ruling?.kind === 'goal' ? ruling.side === 1 ? 0 : 1 : null;
 }
 
 export function formatTime(ticks: number): string {

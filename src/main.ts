@@ -47,7 +47,8 @@ async function start() {
   const match = new Match(settings.seed, checkpoint);
   const view = new BroadcastRenderer(byId('scene'), match, settings.quality, settings.names);
   view.camera.production = production;
-  const audio = new MatchAudio(settings);
+  const musicSeed = query.has('seed') ? settings.seed : String(crypto.getRandomValues(new Uint32Array(1))[0]);
+  const audio = new MatchAudio(settings, musicSeed, !awaitingRecording);
   const commentary = new Commentary(settings.seed);
   const show = new MatchShow(production);
   const hud = byId('hud');
@@ -64,6 +65,9 @@ async function start() {
   const unlockSound = byId<HTMLButtonElement>('sound-unlock');
   caption.dataset.subtitles = showCaptions ? 'on' : 'off';
   const captionText = byId('commentary-text');
+  const lineRuling = byId('line-ruling');
+  const rulingTitle = byId('ruling-title'), rulingDetail = byId('ruling-detail');
+  let rulingUntil = 0;
   const captionHost = byId('commentary-host');
   const captionEvent = byId('commentary-event');
   const report = byId('match-report');
@@ -148,6 +152,13 @@ async function start() {
   const stamp = (summary?: MatchSummary, fulltime = false) => ({ tick: match.tick, now: performance.now(),
     match: summary?.number ?? match.number, matchTicks: fulltime ? MATCH_TICKS : match.matchTicks, score: summary?.scores ?? match.scores });
 
+  function showLineRuling(title: string, detail: string, until: number) {
+    lineRuling.hidden = false;
+    rulingTitle.textContent = title;
+    rulingDetail.textContent = detail;
+    rulingUntil = until;
+  }
+
   function callout(label: string, detail: string, team: Team | undefined, ticks: number, story = '') {
     overlay.hidden = false;
     eventLabel.textContent = label;
@@ -169,7 +180,7 @@ async function start() {
     caption.dataset.team = team === undefined ? '' : String(team);
     captionEvent.hidden = !moment;
     if (moment) captionEvent.textContent = `${moment.beat === 'rematch' ? 'REMATCH · ' : ''}${moment.label} · ${moment.name}`;
-    hideCaption = match.tick + (moment?.kind === 'goal' ? Math.max(call.ticks, GOAL_BREAK) : call.ticks);
+    hideCaption = match.tick + call.ticks;
     const audible = audio.speak(call.id, call.priority);
     onAir = { call, tick: match.tick, audible };
     if (edit?.active) edit.call(call, stamp(summary, fulltime), hideCaption, audible);
@@ -178,6 +189,8 @@ async function start() {
   function showReport(event: MatchEvent, feature: ShowMoment | undefined) {
     const summary = event.summary;
     if (!summary) return;
+    lineRuling.hidden = true;
+    byId('music-credit').hidden = audio.status !== 'on' || !audio.musicReady || !settings.music;
     const fulltime = event.kind === 'fulltime';
     report.hidden = false;
     report.dataset.phase = event.kind;
@@ -223,18 +236,24 @@ async function start() {
       report.hidden = true;
       replay.reset();
     }
+    if (event.kind === 'goal' || event.kind === 'kickoff') lineRuling.hidden = true;
     const call = commentary.react(event, match.scores, moment, undefined, show.recap);
     radio(call, moment);
     const visibleCall = call && showCaptions;
     const standoutSave = event.save?.move === 'dive' || event.save?.move === 'tip';
     if (event.kind === 'goal') {
       const team = event.team ?? 0;
+      showLineRuling(event.detail === 'Own goal' ? 'OWN GOAL' : 'GOAL', settings.names[team], event.tick + GOAL_BREAK);
+      if (visibleCall) captionEvent.hidden = true;
       if (!visibleCall) {
         if (production && !call) caption.hidden = true;
         callout(moment?.label ?? 'GOAL', moment?.player === undefined ? settings.names[team] : `${moment.name} · ${settings.names[team]}`, team, GOAL_BREAK);
       }
       updateScores();
       persist();
+    } else if (event.kind === 'out' || event.kind === 'throw') {
+      const ruling = event.kind === 'throw' ? 'BACK IN PLAY' : event.detail === 'over' ? 'OVER THE BAR' : event.detail === 'wide' ? 'WIDE OF THE POST' : 'OUT OF PLAY';
+      showLineRuling(ruling, `${CAST[event.player!]} · ${event.restart?.toUpperCase()}`, event.kind === 'out' ? Infinity : event.tick + 88);
     } else if (!visibleCall && moment && report.hidden && (!production || caption.hidden) && (standoutSave ||
       ((moment.joke || moment.callback || moment.tick - lastPlayCallout > 1320) && match.tick >= hideCallout - 22))) {
       lastPlayCallout = moment.tick;
@@ -290,6 +309,13 @@ async function start() {
   const actions = document.createElement('div');
   actions.className = 'operator-actions';
   operator.append(actions, audioStatus);
+  const playingMusic = document.createElement('small');
+  operator.append(playingMusic);
+  const musicCredit = document.createElement('a');
+  musicCredit.href = `${import.meta.env.BASE_URL}licenses/stadium-music.txt`;
+  musicCredit.textContent = 'Stadium music credit for your stream';
+  musicCredit.target = '_blank';
+  operator.append(musicCredit);
   function button(label: string, act: () => void) {
     const item = document.createElement('button');
     item.type = 'button'; item.textContent = label;
@@ -310,7 +336,11 @@ async function start() {
   button('Diagnostics', toggleDiagnostics);
   if (edit) {
     const begin = () => {
-      if (awaitingRecording) { awaitingRecording = false; lastTime = 0; }
+      if (awaitingRecording) {
+        awaitingRecording = false;
+        lastTime = 0;
+        audio.startMusic();
+      }
       edit.begin(match.tick, performance.now());
       logButton.textContent = 'Stop marker log';
     };
@@ -331,7 +361,7 @@ async function start() {
     button('Download captions', () => download('srt'));
     operator.append(editStatus);
     window.rushCapture = { begin, finish, audioTrack: () => audio.captureTrack(), status: () => ({ tick: match.tick, state: match.state, score: [...match.scores],
-      fps: settings.fps, audio: audio.status, audioReady: audio.commentaryReady, speech: audio.commentaryPlayed, crowdReactions: audio.crowdReactions,
+      fps: settings.fps, audio: audio.status, audioReady: audio.commentaryReady, speech: audio.commentaryPlayed, musicReady: audio.musicReady, music: audio.musicStatus, crowdReactions: audio.crowdReactions,
       framing: view.framing(), arena: view.arena.get(match.tick), booth: currentHost(), playing: edit.active }) };
   }
   button('Close', () => { operator.hidden = true; });
@@ -354,7 +384,7 @@ async function start() {
       matchNumber: match.number, half: match.half, matchTicks: match.matchTicks, seriesGoals: [...match.seriesGoals], wins: [...match.wins], draws: match.draws, attack: [match.attack(0), match.attack(1)],
       show: { moment: show.moment, celebration: show.getCelebration(match.tick), highlight: show.highlight?.label, captured: replay.captured, replayFrames: replay.frameCount, replayFrame: replay.frameIndex, recap: show.recap, arena: view.arena.get(match.tick), booth: currentHost(), framing: view.framing(), gestures: match.players.map(p => show.getGesture(p.id, match.tick)?.kind ?? null) },
       restartTeam: match.restartTeam, goalId: match.goalId, owner: match.owner?.id ?? null, ballVisible: match.ballVisible, physicsMs: match.physicsMs,
-      render: view.info(), resources: match.resources(), audio: audio.status, commentaryReady: audio.commentaryReady, commentaryPlayed: audio.commentaryPlayed, lastSpoken: audio.lastSpoken, effectsPlayed: audio.effectsPlayed, accentsPlayed: audio.accentsPlayed, voices: audio.activeVoices, maxVoices: 10, droppedSeconds, measuredFrames, frameBuckets: [...frameBuckets],
+      render: view.info(), resources: match.resources(), audio: audio.status, music: audio.musicStatus, commentaryReady: audio.commentaryReady, commentaryPlayed: audio.commentaryPlayed, lastSpoken: audio.lastSpoken, effectsPlayed: audio.effectsPlayed, accentsPlayed: audio.accentsPlayed, voices: audio.activeVoices, maxVoices: 10, droppedSeconds, measuredFrames, frameBuckets: [...frameBuckets],
       stats: match.stats, ball: match.currentBall, flight: match.flight, history: match.history, players: match.players.map(({ id, team, role, number, x, z, intent, pose, keeperReady }) => ({ id, team, role, number, x, z, intent, keeperReady, pose: pose?.kind ?? null, poseAge: pose?.age ?? null })) };
   }
 
@@ -364,9 +394,12 @@ async function start() {
   };
 
   function updateInterface(now: number) {
+    const lineView = match.state === 'throw-in' || match.state === 'goal';
+    if ((hud.dataset.lineView === 'true') !== lineView) hud.dataset.lineView = String(lineView);
     const second = Math.floor(match.tick / 60);
     if (lastText !== second) {
       clock.textContent = formatTime(match.matchTicks);
+      audio.closeFinish(match.state === 'live' && match.half === 2 && MATCH_TICKS-match.matchTicks <= 60*60 && Math.abs(match.scores[0]-match.scores[1]) <= 1);
       matchNumber.textContent = `MATCH ${String(match.number).padStart(2, '0')}`;
       clockProgress.style.width = `${100 * (match.matchTicks % HALF_TICKS) / HALF_TICKS}%`;
       lastText = second;
@@ -376,6 +409,7 @@ async function start() {
     const goalTeam = match.state === 'goal' ? show.getCelebration(match.tick)?.team : undefined;
     const goalTheme = goalTeam === undefined ? '' : String(goalTeam);
     if (hud.dataset.goalTeam !== goalTheme) hud.dataset.goalTeam = goalTheme;
+    if (!lineRuling.hidden && match.tick > rulingUntil) lineRuling.hidden = true;
     if (!overlay.hidden && match.tick > hideCallout) overlay.hidden = true;
     if (!caption.hidden && match.tick >= hideCaption) caption.hidden = true;
     if (onAir && match.tick < hideCaption) {
@@ -414,6 +448,9 @@ async function start() {
     if (!operator.hidden) {
       const messages = { on: 'Audio is active.', blocked: 'Select Enable audio to play sound.', muted: 'Audio is muted.', unavailable: 'Audio is unavailable in this browser.' };
       audioStatus.textContent = messages[audio.status];
+      const title = settings.music && audio.status === 'on' && audio.musicTitle;
+      playingMusic.hidden = !title;
+      if (title) playingMusic.textContent = 'Now playing · ' + title;
       if (edit?.active) editStatus.textContent = 'Marker log is running.';
       else if (edit) editStatus.textContent = 'Start the marker log with your recording.';
     }
@@ -423,7 +460,7 @@ async function start() {
       diagnostics.textContent = [
         `${fps.toFixed(1)} fps  |  ${frameMs.toFixed(1)} ms/frame  |  CPU render ${renderMs.toFixed(2)} ms  |  physics ${match.physicsMs.toFixed(2)} ms`,
         `${viewportWidth}×${viewportHeight} viewport  |  ${pixelWidth}×${pixelHeight} render (${scale.toFixed(2)}×)`,
-        `${calls} draws  |  ${geometries} geometries  |  ${textures} textures  |  ${particles} particles  |  ${audio.activeVoices} audio voices`,
+        `${calls} draws  |  ${geometries} geometries  |  ${textures} textures  |  ${particles} particles  |  ${audio.activeVoices} effect voices`,
         `${match.state}  |  goals ${match.scores.join('–')}  |  passes ${s.passes}  |  shots ${s.shots}  |  saves ${s.saves}  |  recoveries ${s.recoveries} / ${s.faults} faults`,
         `Possession changes ${s.possessionChanges}  |  ${match.players.map(p => `${p.team}-${p.number} ${p.intent}`).join('  ')}`,
       ].join('\n');
@@ -464,7 +501,7 @@ async function start() {
       if (edit?.active) edit.advance(match.tick, performance.now());
       for (const event of match.events) react(event);
       radio(commentary.countdown(match.tick, match.scores));
-      radio(commentary.advanceBooth(match.tick, match.state === 'live'));
+      radio(commentary.advanceBooth(match.tick, match.state === 'live' || match.state === 'throw-in' || match.state === 'goal'));
       accumulator = Math.max(0, accumulator - STEP);
     }
     if (match.tick >= nextSave) { nextSave = match.tick + 900; persist(); }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { before, test } from 'node:test';
 import { Vector3 } from 'three';
-import { BALL, crossedGoal, dir, FIELD, formatTime, FULLTIME_BREAK, GOAL_BREAK, HALFTIME_BREAK, HALF_TICKS, KICKOFF_TICKS, MATCH_TICKS, other, STEP } from '../src/football';
+import { BALL, crossedGoal, pitchCrossing, dir, FIELD, formatTime, FULLTIME_BREAK, GOAL_BREAK, HALFTIME_BREAK, HALF_TICKS, KICKOFF_TICKS, MATCH_TICKS, other, STEP } from '../src/football';
 import type { Point3 } from '../src/football';
 import { fanAppearance } from '../src/arena-crowd';
 import { Commentary } from '../src/commentary';
@@ -46,7 +46,7 @@ test('kickoff waves travel across the stands and a goal excites the scoring fans
   const goal = arena.react({ kind: 'goal', tick: 200, team: 1, player: 9, point: { x: 22, y: 0.27, z: 0 } });
   assert.ok(fanReaction(goal, 227, 1, 20) > 0.3);
   assert.ok(fanReaction(goal, 227, 0, -20) < 0);
-  assert.ok(fanReaction(arena.react({ kind: 'post', tick: 450 }), 470, 0, 0) < 0);
+  assert.ok(fanReaction(arena.react({ kind: 'post', tick: 200 + GOAL_BREAK + 1 }), 200 + GOAL_BREAK + 21, 0, 0) < 0);
 });
 
 function run(match: Match, ticks: number) { for (let i = 0; i < ticks; i++) match.step(); }
@@ -95,9 +95,10 @@ test('a complete swept crossing is required inside the opening in either directi
   assert.equal(crossedGoal({ ...a, y: 3.40 }, { ...b, y: 3.40 }), null);
   assert.equal(crossedGoal({ ...a, x: 23, z: 4.2 }, { ...b, x: 23 }), null);
   assert.equal(crossedGoal(b, { ...b, x: 24 }), null);
+  assert.equal(crossedGoal({ x: 20, y: 1, z: FIELD.z + 1 }, { x: 24.5, y: 1, z: -14 }), null);
 });
 
-test('a physical high-speed own goal scores once, retires the ball, then kicks off for the conceding side', () => {
+test('a physical high-speed own goal scores once, settles visibly in the net, then kicks off for the conceding side', () => {
   const match = new Match('own-goal');
   try {
     untilLive(match);
@@ -109,12 +110,15 @@ test('a physical high-speed own goal scores once, retires the ball, then kicks o
     const goal = match.history.find(e => e.kind === 'goal');
     assert.equal(goal?.detail, 'Own goal');
     assert.equal(goal.goalId, 1);
-    assert.equal(match.ballVisible, false);
-    assert.equal(match.ball.isEnabled(), false);
+    assert.equal(match.ballVisible, true);
+    assert.equal(match.ball.isEnabled(), true);
     assert.equal(match.restartTeam, 1);
     run(match, goal.tick + GOAL_BREAK - match.tick - 1);
     assert.equal(match.state, 'goal');
-    assert.equal(match.ball.isEnabled(), false);
+    assert.equal(match.ball.isEnabled(), true);
+    assert.equal(match.netImpact?.surface, 'back');
+    assert.ok(match.currentBall.x > FIELD.x + BALL && match.currentBall.x < FIELD.x + FIELD.net);
+    assert.ok(match.currentBall.y < BALL + .08);
     match.step();
     assert.equal(match.state, 'kickoff');
     run(match, KICKOFF_TICKS);
@@ -130,7 +134,7 @@ test('Rapier CCD rebounds fast shots from posts, crossbars, boards and the back 
   const shots: Array<{ kind: 'post' | 'board'; position: Point3; velocity: Point3; axis: 'x' | 'z'; sign: number }> = [
     { kind: 'post', position: { x: 21.38, y: 1.0, z: FIELD.goal }, velocity: { x: 45, y: 0, z: 0 }, axis: 'x', sign: -1 },
     { kind: 'post', position: { x: 21.38, y: FIELD.bar, z: 0 }, velocity: { x: 45, y: 0, z: 0 }, axis: 'x', sign: -1 },
-    { kind: 'board', position: { x: 2, y: 0.41, z: FIELD.z - 0.38 }, velocity: { x: 0, y: 0, z: 44 }, axis: 'z', sign: -1 },
+    { kind: 'board', position: { x: 2, y: 0.41, z: FIELD.z + FIELD.runoff - .38 }, velocity: { x: 0, y: 0, z: 44 }, axis: 'z', sign: -1 },
     { kind: 'board', position: { x: FIELD.x + FIELD.net - 0.5, y: 1.25, z: 0 }, velocity: { x: 45, y: 0, z: 0 }, axis: 'x', sign: -1 },
     { kind: 'board', position: { x: FIELD.x + 1.4, y: 1.25, z: FIELD.goal - 0.49 }, velocity: { x: 0, y: 0, z: 42 }, axis: 'z', sign: -1 },
   ];
@@ -139,12 +143,58 @@ test('Rapier CCD rebounds fast shots from posts, crossbars, boards and the back 
     try {
       untilLive(match);
       drive(match, position, velocity);
-      run(match, 4);
-      assert.deepEqual(match.scores, [0, 0]);
+      const touched: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        match.world.step(match.contact);
+        match.contact.drainCollisionEvents((a, b, start) => {
+          if (start) touched.push(match.bumpers.get(a === match.ballCollider.handle ? b : a) ?? '');
+        });
+      }
       assert.ok(match.ball.linvel()[axis] * sign > 0, `${JSON.stringify(position)} rebounded`);
-      assert.ok(match.history.some(e => e.kind === kind));
+      assert.ok(touched.includes(kind));
     } finally { match.dispose(); }
   }
+});
+
+test('wide, high and sideline exits stay visible until a player releases an inbound throw', () => {
+  for (const side of [-1, 1]) for (const reason of ['wide', 'over', 'touchline'] as const) for (const deflection of [false, true]) {
+    const match = new Match('line-rulings'), camera = new BroadcastCamera(), show = new MatchShow();
+    try {
+      untilLive(match);
+      match.owner = undefined;
+      const attack = side > 0 ? 0 : 1;
+      match.lastTouch = (deflection ? other(attack) : attack) * 5 + 4;
+      const touchline = reason === 'touchline';
+      drive(match, { x: touchline ? 6 : side * (FIELD.x - .20), y: reason === 'over' ? 4.0 : .8,
+        z: touchline ? side * (FIELD.z - .18) : reason === 'wide' ? 5.3 : .1 },
+        { x: touchline ? 0 : side*24, y: 0, z: touchline ? side*22 : 0 });
+      run(match, 3);
+      const decision = match.ballReturn;
+      assert.ok(decision);
+      assert.equal(decision.reason, reason);
+      assert.equal(decision.kind, touchline ? 'Throw-in' : deflection ? 'Corner throw' : 'Keeper throw');
+      assert.equal(match.players[decision.thrower].team, deflection ? attack : other(attack));
+      const stages = new Set<string>();
+      for (let i=0; match.ballReturn && i<540; i++) {
+        stages.add(match.ballReturn.stage);
+        assert.ok(match.ballVisible && match.ball.isEnabled());
+        camera.update(match, STEP, show);
+        assert.equal(camera.mode, 'throw-in');
+        match.step();
+      }
+      assert.deepEqual([...stages], ['collect','carry','windup']);
+      const release = match.events.find(e => e.kind === 'throw');
+      assert.ok(release?.point && release.flight?.receiver !== undefined);
+      assert.equal(release.player, decision.thrower);
+      assert.ok(release.point.y > 2 && Math.hypot(release.point.x - match.players[decision.thrower].x, release.point.z - match.players[decision.thrower].z) < .6);
+      run(match, 24);
+      assert.ok(Math.abs(match.currentBall.x) < FIELD.x && Math.abs(match.currentBall.z) < FIELD.z);
+      assert.deepEqual(match.scores,[0,0]);
+      assert.equal(match.stats.recoveries,0);
+    } finally { match.dispose(); }
+  }
+  assert.equal(pitchCrossing({x:21,y:1,z:12.9},{x:24,y:1,z:15})?.kind,'touchline');
+  assert.equal(pitchCrossing({x:22,y:1,z:12.8},{x:24,y:1,z:14})?.kind,'wide');
 });
 
 test('a fast low shot cannot tunnel through an outfield body', () => {
@@ -167,7 +217,14 @@ test('the keeper can gather a nearby loose ball and distributes it on a bounded 
     drive(match, { x: keeper.x + 0.91, y: BALL + 0.01, z: keeper.z }, { x: -2.1, y: 0, z: 0 });
     run(match, 2);
     assert.equal(match.owner?.id, keeper.id);
-    for (let i = 0; i < 96 && match.stats.distributions === 0; i++) match.step();
+    let dropHeight = 0;
+    for (let i = 0; i < 135 && match.stats.distributions === 0; i++) {
+      const inHands = match.heldKeeper;
+      match.step();
+      if (inHands && !match.heldKeeper) dropHeight = match.previousBall.y;
+    }
+    const contact = match.history.find(e => e.kind === 'distribution')?.point;
+    assert.ok(contact && dropHeight > contact.y + .15 && contact.y < .85);
     assert.equal(match.stats.distributions, 1);
     const { x, z } = match.ball.linvel();
     assert.ok(Math.hypot(x, z) > 6, `Distribution velocity ${x}, ${z}`);
@@ -193,7 +250,7 @@ test('keepers read danger at either end and choose a save that fits the shot', (
 });
 
 test('a keeper can hold a low shot and tip a high shot back into play', () => {
-  for (const [seed, through, expectedMove, held] of [['zeerush', 700, 'smother', true], ['cup-21', 190, 'tip', false]] as const) {
+  for (const [seed, through, expectedMove, held] of [['grandstand-52', 300, 'smother', true], ['grandstand-4', 220, 'tip', false]] as const) {
     const match = new Match(seed);
     try {
       let seen = false;
@@ -219,8 +276,9 @@ test('escape, invalid state, and a stalled ball resolve in the world and preserv
     untilLive(match);
     drive(match, { x: 2, y: 4.6, z: FIELD.z + 1.02 }, { x: 12, y: 0, z: 4 });
     match.step();
-    assert.equal(match.state, 'retrieval');
-    untilLive(match);
+    assert.equal(match.state, 'throw-in');
+    for (let i=0; i<600 && match.ballReturn; i++) match.step();
+    assert.ok(match.history.some(e => e.kind === 'throw'));
     match.players[2].x = Number.NaN;
     match.step();
     assert.equal(match.state, 'fault');
@@ -231,10 +289,9 @@ test('escape, invalid state, and a stalled ball resolve in the world and preserv
     assert.equal(match.state, 'fault');
     untilLive(match);
     drive(match, { x: FIELD.x + 0.9, y: BALL + 0.01, z: 0 }, { x: 0, y: 0, z: 0 });
-    run(match, 205);
-    assert.equal(match.state, 'retrieval');
-    untilLive(match);
-    assert.equal(match.stats.recoveries, 4);
+    match.step();
+    assert.equal(match.state, 'throw-in');
+    assert.equal(match.stats.recoveries, 2);
     assert.equal(match.stats.faults, 2);
     assert.ok(match.stats.peaks.fault <= 86);
     assert.deepEqual(match.scores, [0, 0]);
@@ -292,15 +349,15 @@ test('settings validate runtime options and storage errors are survivable', () =
 });
 
 test('seeded play generates football events for both sides with bounded match resources', () => {
-  const a = new Match('zeerush');
-  const b = new Match('zeerush');
+  const a = new Match('grandstand-3');
+  const b = new Match('grandstand-3');
   try {
     for (const match of [a, b]) run(match, 60 * 240);
     assert.deepEqual(a.stats, b.stats);
     assert.deepEqual(a.scores, b.scores);
     const s = a.stats;
     assert.ok(s.byTeam.every(t => t.passes > 10 && t.shots > 1 && t.saves > 0), JSON.stringify(s));
-    assert.ok(s.distributions > 0 && s.interceptions > 5 && s.tackles > 3 && s.rebounds > 3 && s.possessionChanges > 12);
+    assert.ok(s.distributions > 0 && s.interceptions > 5 && s.tackles > 3 && s.throws > 3 && s.outs === s.throws && s.possessionChanges > 12);
     assert.ok(a.scores[0] + a.scores[1] > 0);
     assert.equal(s.faults, 0);
     assert.ok(a.resources().history <= a.resources().eventLimit);
@@ -402,13 +459,13 @@ test('each booth setup gets its own recorded answer from the other host after th
   const play = { kind: 'post', player: 7, tick: 620 } as const;
   const opening = radio.react(play, [0, 0]);
   assert.equal(opening?.id, 'postBooth');
-  assert.equal(opening.host, 'MICK');
+  assert.equal(opening.host, 'JOM');
   const due = play.tick + opening.ticks;
   assert.equal(radio.advanceBooth(due - 1, true), undefined);
   assert.equal(radio.react({ kind: 'pass', tick: due }, [0, 0]), undefined);
   const reply = radio.advanceBooth(due, true);
   assert.equal(reply?.id, lines.postBooth.answer);
-  assert.equal(reply.host, 'EMMA');
+  assert.equal(reply.host, 'JERRY');
   assert.deepEqual(reply.exchange, { opening: opening.id, reply: true, player: 7, opponent: undefined });
   assert.equal(radio.advanceBooth(due + 1, true), undefined);
 });
@@ -423,6 +480,21 @@ test('announcer variants rotate and name the actual player, save or delivery', (
   assert.equal(tip?.id, 'tipSave');
   assert.equal(new Commentary().react({ ...pass, flight: { ...pass.flight, style: 'switch' } }, score)?.id, 'switchBooth');
   assert.equal(new Commentary().react({ kind: 'goal', tick: 600, player: 7, goalId: 1 }, score)?.id, 'dashGoal');
+});
+
+test('a goal gives the other host an actual voiced reply and a nearer ruling can interrupt it', () => {
+  const desk = new Commentary('goal-line');
+  const setup = desk.react({ kind: 'goal', team: 0, player: 4, goalId: 1, tick: 400 }, [1,0]);
+  assert.ok(setup?.exchange);
+  const answer = desk.advanceBooth(400 + setup.ticks, true);
+  assert.ok(answer?.exchange?.reply);
+  assert.notEqual(answer.host, setup.host);
+  assert.ok(cues[answer.id][1] > .8);
+  const wide = desk.react({ kind:'out', tick: 1000, detail: 'wide', restart: 'Keeper throw', player: 0 }, [1,0]);
+  assert.ok(wide?.id.startsWith('missWide'));
+  const high = desk.react({ kind:'out', tick: 1060, detail: 'over', restart: 'Corner throw', player: 2 }, [1,0]);
+  assert.ok(high && high.id.startsWith('missHigh'));
+  assert.equal(desk.advanceBooth(1060 + high.ticks, true)?.exchange?.opening, high.id);
 });
 
 test('goals, dead balls and missed reply windows cancel an unfinished booth joke', () => {
@@ -587,7 +659,7 @@ test('named calls use true event context and limit ordinary shot commentary', ()
   const secondSave = { ...save, tick: 1340 };
   const repeat = commentary.react(secondSave, score, show.react(secondSave, score));
   assert.equal(repeat?.id, 'patchAgain');
-  assert.ok(repeat.host === 'MICK' || repeat.host === 'EMMA');
+  assert.ok(repeat.host === 'JOM' || repeat.host === 'JERRY');
   const shot = { kind: 'shot', tick: 2800, player: 9, team: 1 } as const;
   assert.equal(commentary.react(shot, score)?.id, 'zipShot');
   assert.equal(commentary.react({ ...shot, tick: 3410 }, score), undefined);
@@ -726,7 +798,7 @@ test('nearby participants get a tighter two-player frame in the live stream and 
 });
 
 test('a lofted switch reaches the running recipient and both endpoints fit the phone camera', () => {
-  const match = new Match('cup-13');
+  const match = new Match('grandstand-4');
   const camera = new BroadcastCamera();
   const vertical = new BroadcastCamera();
   const show = new MatchShow();

@@ -2,9 +2,19 @@
 
 Run `npm run serve` in the workspace and keep that terminal open. Use [http://127.0.0.1:41730/](http://127.0.0.1:41730/) as the browser-source URL on the same machine.
 
+## Stadium audio and YouTube credit
+
+The sound-on layout enables Jom and Jerry’s commentary and the stadium music. Press **O** for the music, effects and commentary faders. If the browser requests a gesture, click the pitch to enable sound. [Open the sound-on layout](http://127.0.0.1:41730/?mode=capture&fps=30&audio=auto&music=on&commentary=on)
+
+The live soundtrack rotates six Rush Arena originals. The operator panel shows the current tune and links to a copyable credit. Recordings made with this build can use the following line.
+
+> Original music from the Rush Arena Stadium Band for ZeeRush Gaming. Instrument performances rendered with GeneralUser GS by S. Christian Collins.
+
+The credits file also identifies the music in the earlier goal-line and keeper previews. [Stream music credits](../public/licenses/stadium-music.txt)
+
 ## Record and cut an episode
 
-Set the capture source to **1920×1080** for a horizontal stream or episode, or **1080×1920** for a vertical clip. The same link frames the action to fit the source dimensions. The camera follows play from the sideline and moves closer for nearby passes, challenges, saves, and celebrations. Capture mode uses its own preferences and checkpoint, with larger score and caption graphics and brief player names during two-player shots. An animated booth window shows Mick and Emma while they speak. [Open the sound-on recording layout at 30 fps](http://127.0.0.1:41730/?mode=capture&fps=30&audio=auto&commentary=on)
+Set the capture source to **1920×1080** for a horizontal stream or episode, or **1080×1920** for a vertical clip. The same link frames the action to fit the source dimensions. The camera follows play from the sideline and moves closer for nearby passes, challenges, saves, and celebrations. Capture mode uses its own preferences and checkpoint, with larger score and caption graphics and brief player names during two-player shots. An animated booth window shows Jom and Jerry while they speak. [Open the sound-on recording layout at 30 fps](http://127.0.0.1:41730/?mode=capture&fps=30&audio=auto&music=on&commentary=on)
 
 For an OBS or Streamlabs take, open **Broadcast controls** with **O**. Start the marker log at the start of the recording, note any difference between the two start times, then close the panel. At the end of the take, stop the marker log and download the JSON edit log and `.srt` subtitles. The JSON gives elapsed recording time, match time, score, players, save types, goals, and completed exchanges between the booth hosts. It also records dialogue text and whether the game played the audio. The exported clock covers the current take. Download the files before starting another take or reloading the source.
 
@@ -48,4 +58,4 @@ Use one Browser Source instance across scenes where possible. Leave the server r
 
 Halftime occurs at 10 minutes and a fresh match clock starts at each 20-minute boundary. The game keeps playing through the series. Speech, effects and music use the same browser audio graph. The operator can mix them separately. Captions remain visible while audio waits for a gesture and can be hidden with the rest of the HUD.
 
-The browser tests exercise the delivered game in Chrome. They do not measure native source compositing, streaming encoders, audio levels in a recording, or delivery to YouTube.
+Chrome tests exercise the local game, the captured audio track and the music fader. The match preview includes the music, both commentators and the effects from the same mixer used by the stream layout.

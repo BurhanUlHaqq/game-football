@@ -57,7 +57,7 @@ html, body, #broadcast, #scene { width: 100%; height: 100%; margin: 0; overflow:
 #commentary-host { display: inline-block; margin-left: .51em; padding-left: .58em; border-left: 1px solid #a993a5; color: #e5d5e8; }
 #commentary-booth { flex: 0 0 auto; width: 7em; height: auto; border-radius: .35em; box-shadow: 0 0 0 1px #fff1c645; }
 .commentary #commentary-host { color: #ffd087; font-size: 1.22em; letter-spacing: .04em; }
-.commentary[data-host='EMMA'] #commentary-host { color: #9ef3d2; }
+.commentary[data-host='JERRY'] #commentary-host { color: #9ef3d2; }
 #commentary-text { color: #fff4e8; font-size: .91em; font-weight: 600; }
 .match-report { position: absolute; left: 50%; bottom: clamp(82px, 10.9vh, 244px); transform: translateX(-50%); width: clamp(308px, 35vw, 1344px); max-width: 94vw; padding: .76em 1em .70em; border: 1px solid #f4d1a77d; border-top: .23em solid #ffc284; border-radius: .78em; background: #251e37f5; box-shadow: 0 .55em 1.64em #20172b70; font-size: clamp(12px, 1.1vw, 40px); }
 .report-header, .report-stats, .report-footer { display: flex; align-items: center; justify-content: space-between; gap: .62em; }
@@ -245,4 +245,20 @@ html, body, #broadcast, #scene { width: 100%; height: 100%; margin: 0; overflow:
   #broadcast[data-mode='capture'] .match-report { inset: auto auto 27% 46%; width: 71%; font-size: 3.8vw; }
   #broadcast[data-mode='capture'] .match-report[data-phase='fulltime'] { inset: auto auto 25% 46%; width: 71%; transform: translateX(-50%); }
   #capture-players span { font-size: 3.1vw; }
+}
+.line-ruling { width: max-content; max-width: min(95vw, 100%); margin: .25em auto 0; border-radius: .45em; background: #382840; color: #ffe8ac; padding: .46em .85em; font-size: clamp(10px, 1.05vw, 18px); font-weight: 800; text-align: center; line-height: 1.18; }
+#music-credit { color: #c9c3d0; font-size: .68em; }
+#operator a { color: #aae8d7; }
+#broadcast[data-mode='capture'] .line-ruling { font-size: clamp(13px, 1.38vw, 27px); }
+#broadcast[data-mode='capture'] #hud[data-line-view='true'] .commentary { font-size: calc(var(--capture-caption-size) * .73); }
+.line-ruling span::before { content: ' · '; }
+@media (max-height: 440px) and (orientation: landscape) {
+  #broadcast .line-ruling, #broadcast[data-mode='capture'] .line-ruling {
+    position: fixed; top: 2.8vh; left: 1.6vw; max-width: 19vw; margin: 0; padding: .40em .5em;
+    font-size: clamp(9px, 1.7vw, 13px); text-align: left;
+  }
+  .line-ruling b, .line-ruling span { display: block; }
+  .line-ruling span { margin-top: .18em; font-weight: 650; color: #fff4dd; }
+  .line-ruling span::before { content: none; }
+  .masthead:has(.line-ruling:not([hidden])) .brand { visibility: hidden; }
 }

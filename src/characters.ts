@@ -1,7 +1,8 @@
 import * as T from 'three';
-import { angleDiff, clamp, damp, KICK_CONTACT, length, mix } from './football';
-import type { Point } from './football';
-import { diveReach } from './goalkeeping';
+import { angleDiff, clamp, damp, length, mix, STEP } from './football';
+import type { Point, Point3 } from './football';
+import { keeperGlove, keeperMotion } from './goalkeeping';
+import { swingingAnkle } from './kicks';
 import type { Player } from './match';
 import type { GoalMove, PlayerGesture } from './show';
 import { ArticulatedInstances, box, cone, cylinder, material, plane, sphere, textTexture } from './art';
@@ -19,7 +20,14 @@ const patchThread = material('#ffe1a0');
 const captainAmber = material(HEROES[4].accent);
 const captainTeal = material(HEROES[9].accent);
 const keeperAccent = [material(HEROES[0].accent), material(HEROES[5].accent)];
-const glovePoint = new T.Vector3();
+const upAxis = new T.Vector3(0, 1, 0), limbDirection = new T.Vector3();
+const grip = new T.Vector3(), jointAt = new T.Vector3(), bendAt = new T.Vector3(), pawAt = new T.Vector3();
+function stretchLimb(part: T.Object3D, a: T.Vector3, b: T.Vector3, radius: number) {
+  limbDirection.subVectors(b, a);
+  part.position.copy(a).lerp(b, .5);
+  part.scale.set(radius, limbDirection.length() * .5 + .065, radius);
+  part.quaternion.setFromUnitVectors(upAxis, limbDirection.normalize());
+}
 const normalKits = [
   { shirt: material('#ffba42'), trim: material('#ffe29b'), shorts: material('#443653'), sock: material('#fff1be'), boot: material('#59334e') },
   { shirt: material('#1e9c9d'), trim: material('#86ffda'), shorts: material('#223459'), sock: material('#b7f8eb'), boot: material('#3a2d63') },
@@ -48,13 +56,14 @@ function numberPatch(number: number, color: string, back: boolean) {
 }
 
 type Leg = { hip: T.Group; knee: T.Group; foot: T.Group; side: number };
-type Arm = { shoulder: T.Group; elbow: T.Group; side: number };
+type Arm = { shoulder: T.Group; elbow: T.Group; side: number; sleeve: T.Object3D; forearm: T.Object3D; paw: T.Object3D };
 type Glance = { partner: Point; elapsed: number };
 
 export class Character {
   readonly root = new T.Group();
   private readonly hips: Leg[] = [];
   private readonly arms: Arm[] = [];
+  private readonly throwingArms = new T.Group();
   private readonly upper = new T.Group();
   private readonly head = new T.Group();
   private readonly eyeLids: T.Group[];
@@ -94,7 +103,8 @@ export class Character {
       return t;
     };
 
-    this.root.add(this.upper);
+    this.root.add(this.upper, this.throwingArms);
+    this.throwingArms.scale.setScalar(0);
     this.upper.add(this.head);
     this.upper.scale.x = silhouette;
     this.head.position.set(0, (lynx ? 1.88 : 1.81) + neck, lynx ? 0.01 : 0.085);
@@ -144,7 +154,11 @@ export class Character {
         ell(elbow, kit.boot, side * -0.115, -0.242, 0.095, 0.075, 0.108, 0.079);
         ell(elbow, keeperAccent[team], side * 0.036, -0.27, 0.147, 0.102, 0.103, 0.042);
       }
-      this.arms.push({ shoulder, elbow, side });
+      const sleeve = ell(this.throwingArms, kit.shirt, 0, 0, 0, 1, 1, 1);
+      const forearm = ell(this.throwingArms, skin, 0, 0, 0, 1, 1, 1);
+      const paw = ell(this.throwingArms, keep ? kit.trim : skin, 0, 0, 0, .15, .145, .145);
+      if (keep) ell(paw, keeperAccent[team], side * .43, 0, .72, .55, .57, .35);
+      this.arms.push({ shoulder, elbow, side, sleeve, forearm, paw });
     }
 
     const face = addHeroFace(batch, this.head, id, lynx);
@@ -176,23 +190,17 @@ export class Character {
     this.root.scale.setScalar(captain ? 1.05 : 1);
   }
 
-  gloveMidpoint(target: T.Vector3) {
-    target.set(0, 0, 0);
-    for (const { elbow } of this.arms) target.add(glovePoint.set(0, -0.25, 0.145).applyMatrix4(elbow.matrixWorld));
-    target.multiplyScalar(0.5);
-    target.x += Math.sin(this.root.rotation.y) * 0.24;
-    target.z += Math.cos(this.root.rotation.y) * 0.24;
-    return target;
-  }
-
-  animate(alpha: number, time: number, dt: number, gesture?: PlayerGesture, showcase = false, hasBall = false, glance?: Glance) {
+  animate(alpha: number, time: number, dt: number, gesture?: PlayerGesture, showcase = false, hasBall = false, glance?: Glance, throwLift?: number, pickup = 0, ballInHands?: Point3) {
     const p = this.player;
     this.root.position.set(mix(p.oldX, p.x, alpha), 0, mix(p.oldZ, p.z, alpha));
     this.root.rotation.y = p.oldYaw + angleDiff(p.oldYaw, p.yaw) * alpha;
     const smooth = damp(18, dt);
     this.speed = mix(this.speed, length(p.vx, p.vz), smooth);
     this.turn = mix(this.turn, clamp(angleDiff(p.oldYaw, p.yaw) * 2.7, -0.25, 0.25), smooth);
-    const move = clamp(this.speed / 5.0, 0, 1.22);
+    const attempt = p.keeperAttempt;
+    const saveAge = attempt ? Math.max(0, time - (attempt.start+1)*STEP) : 0;
+    const dive = attempt && keeperMotion(attempt, saveAge);
+    const move = attempt ? 0 : clamp(this.speed / 5.0, 0, 1.22);
     const gait = p.stride - (1 - alpha) * this.speed * 3.92 / 60;
     const breath = Math.sin(time * 3.5 + p.id * 0.61);
     const pose = p.pose;
@@ -215,14 +223,22 @@ export class Character {
     const catching = Math.max(holding, action === 'catch' ? this.poseWeight : action === 'distribute' ? this.poseWeight * 0.7 : blocking * 0.85);
     const cradle = holding * (1 - diving);
     const kicking = action === 'shot' || action === 'pass' || action === 'distribute';
-    const kickTime = pose?.age ?? 0;
-    const kick = kicking ? kickTime < KICK_CONTACT ? -0.72 * Math.sin(Math.PI * kickTime / KICK_CONTACT) : 1.15 * Math.cos(clamp((kickTime - KICK_CONTACT) / (pose!.duration - KICK_CONTACT), 0, 1) * Math.PI / 2) : 0;
-    this.poseLift = mix(this.poseLift, diving * 0.38 + tipping * 0.57 + cheering * (0.16 + 0.12 * Math.abs(Math.sin(time * 14))), smooth);
-    if (pose && (action === 'dive' || action === 'tip')) this.root.position.z -= Math.sign(p.home.x) * pose.side * diveReach(progress) * (action === 'tip' ? 0.20 : 0.54);
-    this.root.position.y = this.poseLift;
-    this.root.rotation.z = this.turn - (pose?.side ?? 1) * (diving * 1.07 + tipping * 0.19) + stumbling * Math.sin(time * 12) * 0.21;
-    this.upper.position.y = breath * 0.019 + Math.abs(Math.sin(gait)) * move * 0.042 - (keeper ? 0.075 : 0) - losing * 0.08 - set * 0.18 - smothering * 0.28;
+    const strike = pose?.strike;
+    const kickTime = Math.max(0, (pose?.age ?? 0) - (1-alpha)*STEP);
+    this.poseLift = mix(this.poseLift, cheering * (.16 + .12 * Math.abs(Math.sin(time * 14))), smooth);
+    this.root.position.y = dive?.y ?? this.poseLift;
+    this.root.rotation.z = dive?.lean ?? ((strike ? 0 : this.turn) + stumbling * Math.sin(time * 12) * .21);
+    this.upper.position.y = -(dive?.crouch ?? 0) * .16 + breath * 0.019 + Math.abs(Math.sin(gait)) * move * 0.042 - (keeper ? 0.075 : 0) - losing * 0.08 - set * 0.18 - smothering * 0.28;
     this.upper.rotation.x = move * 0.13 + stumbling * 0.32 - cheering * 0.13 + losing * 0.19 + set * 0.22 + smothering * 0.44 - tipping * 0.15;
+    if (strike && pose) {
+      const weight = Math.sin(Math.PI * clamp(kickTime/pose.duration, 0, 1));
+      this.upper.rotation.z = pose.side * weight * (strike.technique === 'push' ? .075 : .14);
+      this.upper.rotation.y = pose.side * Math.sin(Math.PI*(kickTime-strike.contact)/pose.duration) * weight * .29;
+      this.upper.rotation.x += weight * (strike.technique === 'punt' || strike.technique === 'loft' ? -.10 : .12);
+    } else {
+      this.upper.rotation.y = 0;
+      this.upper.rotation.z = 0;
+    }
     this.head.rotation.x = breath * 0.035 + losing * 0.25 - cheering * 0.17 - move * 0.075 - set * 0.10 + smothering * 0.14 - tipping * 0.32;
     this.head.rotation.y = Math.sin(time * 2.0 + p.id) * (move < 0.1 || showcase ? 0.19 : 0.063) + this.turn * 0.4;
     this.tail.rotation.y = Math.sin(time * (3.2 + move * 1.4) + p.id * 0.43) * (0.22 + 0.24 * move);
@@ -234,9 +250,29 @@ export class Character {
       const cycle = Math.sin(gait) * side;
       const actingLeg = (pose?.side ?? 1) === side;
       const tap = actingLeg && (action === 'intercept' || action === 'receive' || action === 'tackle') ? this.poseWeight * 0.63 : 0;
-      hip.rotation.x = -cycle * 0.61 * move * (1 - shuffle * 0.5) - (actingLeg ? kick : 0) - tap - diving * 0.37 - set * 0.17 - smothering * 0.34;
+      hip.rotation.order = 'ZXY';
+      if (strike && pose) {
+        let ankle: Point3;
+        if (actingLeg) ankle = swingingAnkle(strike, side, kickTime, pose.duration);
+        else {
+          const dx = (strike.plant.x - this.root.position.x) / strike.scale, dz = (strike.plant.z - this.root.position.z) / strike.scale;
+          const yaw = this.root.rotation.y;
+          const hold = clamp((pose.duration-kickTime)/.19, 0, 1);
+          ankle = { x: mix(side*strike.hip, dx*Math.cos(yaw)-dz*Math.sin(yaw), hold), y: .146,
+            z: (dx*Math.sin(yaw)+dz*Math.cos(yaw))*hold };
+        }
+        const dx = ankle.x - hip.position.x, dy = hip.position.y - ankle.y;
+        const reach = Math.hypot(dx, dy, ankle.z);
+        const bend = Math.acos(clamp(reach/.74, .05, 1));
+        const forward = Math.atan2(ankle.z, Math.hypot(dx,dy));
+        hip.rotation.set(-forward-bend, 0, Math.atan2(dx,dy), 'ZXY');
+        knee.rotation.x = bend*2;
+        foot.rotation.x = -hip.rotation.x-knee.rotation.x;
+        continue;
+      }
+      hip.rotation.x = -cycle * 0.61 * move * (1 - shuffle * 0.5) - (dive?.crouch ?? 0)*.47 - tap - diving * 0.37 - set * 0.17 - smothering * 0.34;
       hip.rotation.z = side * (0.07 + (keeper ? 0.14 : 0) + diving * 0.18 + tap * 0.23 + set * 0.13 + smothering * 0.18) + cycle * shuffle * 0.29;
-      knee.rotation.x = Math.max(0, cycle) * move * 0.73 + Math.max(0, -(actingLeg ? kick : 0)) * 0.56 + diving * 0.44 + set * 0.28 + smothering * 0.63;
+      knee.rotation.x = Math.max(0, cycle) * move * 0.73 + (dive?.crouch ?? 0)*.88 + (dive?.y ?? 0)*.56 + diving * 0.44 + set * 0.28 + smothering * 0.63;
       foot.rotation.x = -(hip.rotation.x + knee.rotation.x) * 0.73;
     }
     for (const { shoulder, elbow, side } of this.arms) {
@@ -254,6 +290,35 @@ export class Character {
       const weight = clamp(Math.min(elapsed / 0.16, (1.8 - elapsed) / 0.19), 0, 1);
       const look = Math.atan2(partner.x - p.x, partner.z - p.z);
       this.head.rotation.y += clamp(angleDiff(this.root.rotation.y, look), -0.43, 0.43) * weight * (1 - Math.min(move, 1) * 0.56);
+    }
+    const releasing = action === 'throw' ? 1 - progress : 0;
+    const usingHands = throwLift !== undefined || releasing > 0 || !!ballInHands || !!attempt;
+    this.throwingArms.scale.setScalar(usingHands ? 1 : 0);
+    if (usingHands) {
+      if (ballInHands) this.root.worldToLocal(grip.set(ballInHands.x, ballInHands.y, ballInHands.z));
+      else grip.set(0, 1.68 + releasing * 1.56, .41 + Math.sin(progress * Math.PI) * .66);
+    }
+    for (const { shoulder, sleeve, forearm, paw, side } of this.arms) {
+      shoulder.scale.setScalar(usingHands ? 0 : 1);
+      if (!usingHands) continue;
+      jointAt.set(shoulder.position.x * this.upper.scale.x, shoulder.position.y + this.upper.position.y, .015);
+      if (attempt && !ballInHands) {
+        const hand = keeperGlove(attempt, this.root.position, saveAge, side);
+        this.root.worldToLocal(pawAt.set(hand.x, hand.y, hand.z));
+      } else {
+        pawAt.copy(grip);
+        pawAt.x += side * .23;
+      }
+      bendAt.copy(jointAt).lerp(pawAt, .5);
+      bendAt.x += side * (attempt && !ballInHands ? .105 : .22);
+      bendAt.z += .10;
+      stretchLimb(sleeve, jointAt, bendAt, .16);
+      stretchLimb(forearm, bendAt, pawAt, .118);
+      paw.position.copy(pawAt);
+    }
+    if (pickup > 0) {
+      this.upper.rotation.x += pickup * .72;
+      this.root.position.y -= pickup * .30;
     }
     this.root.updateMatrixWorld(true);
   }

@@ -14,7 +14,6 @@ const qualityLevels = [{ scale: 0.65, maxHeight: 820, sparkCount: 14 }, { scale:
 const MAX_SPARKS = 42;
 const particle = new T.Object3D();
 const ballRotation = new T.Quaternion();
-const keeperHands = new T.Vector3();
 const goalColors = [
   ['#ffce57', '#ff8259', '#fff3bd', '#ffb788'].map(color => new T.Color(color)),
   ['#72f5ce', '#f9a6fa', '#b9afff', '#e5fff6'].map(color => new T.Color(color)),
@@ -31,14 +30,11 @@ export class BroadcastRenderer {
   readonly articulated = new ArticulatedInstances();
   readonly ball: T.Mesh;
   private readonly positions: { ball: T.Vector3; players: readonly T.Vector3[] };
-  private readonly ballRing: T.Mesh<T.RingGeometry, T.MeshBasicMaterial>;
   private readonly heroRing: T.Mesh<T.RingGeometry, T.MeshBasicMaterial>;
-  private readonly impactRing: T.Mesh<T.RingGeometry, T.MeshBasicMaterial>;
   readonly actualSize = new T.Vector2();
   readonly sparkMesh: T.InstancedMesh;
   private readonly shadows: T.Mesh[];
   private readonly sparkSeeds = Array.from({ length: MAX_SPARKS }, (_, i) => { const rng = new Random(`spark-${i}`); return { x: rng.range(-1.6, 1.6), y: rng.range(1.8, 5.5), z: rng.range(-3.6, 3.6), r: rng.range(0.03, 0.15) }; });
-  private goalSide = 0;
   private baseWidth = 0;
   private baseHeight = 0;
   private adjustedAt = -13;
@@ -68,23 +64,16 @@ export class BroadcastRenderer {
     this.articulated.build(this.scene);
     this.ball = makeFootball(this.scene);
     this.positions = { ball: this.ball.position, players: this.chars.map(character => character.root.position) };
-    this.ballRing = new T.Mesh(new T.RingGeometry(0.43, 0.57, 36), new T.MeshBasicMaterial({ color: '#2c1c42', transparent: true, opacity: 0.68, depthWrite: false }));
-    this.ballRing.rotation.x = -Math.PI / 2;
-    this.ballRing.position.y = 0.031;
-    this.ballRing.renderOrder = 3;
-    this.heroRing = new T.Mesh(this.ballRing.geometry, new T.MeshBasicMaterial({ color: '#fff196', transparent: true, opacity: 0.92, depthWrite: false }));
+    this.heroRing = new T.Mesh(new T.RingGeometry(0.43, 0.57, 36), new T.MeshBasicMaterial({ color: '#fff196', transparent: true, opacity: 0.92, depthWrite: false }));
     this.heroRing.rotation.x = -Math.PI / 2;
     this.heroRing.scale.set(2.1, 2.1, 1);
     this.heroRing.renderOrder = 2;
     this.heroRing.visible = false;
-    this.impactRing = new T.Mesh(new T.RingGeometry(0.71, 0.79, 36), new T.MeshBasicMaterial({ color: '#ffe9a6', transparent: true, depthWrite: false }));
-    this.impactRing.rotation.x = -Math.PI / 2;
-    this.impactRing.position.y = 0.04;
-    this.impactRing.visible = false;
-    this.scene.add(this.heroRing, this.ballRing, this.impactRing);
+    this.scene.add(this.heroRing);
     const shadow = softShadowMaterial();
-    this.shadows = Array.from({ length: this.chars.length + 1 }, () => {
-      const s = mesh(this.scene, plane, shadow, 0, 0.026, 0, 2.10, 1.71, 1);
+    const footballShadow = shadow.clone();
+    this.shadows = Array.from({ length: this.chars.length + 1 }, (_, i) => {
+      const s = mesh(this.scene, plane, i === this.chars.length ? footballShadow : shadow, 0, 0.026, 0, 2.10, 1.71, 1);
       s.rotation.x = -Math.PI / 2;
       return s;
     });
@@ -126,17 +115,16 @@ export class BroadcastRenderer {
 
   react(event: MatchEvent) {
     this.camera.react(event);
-    if (event.kind === 'goal') this.goalSide = event.side ?? 1;
     return this.arena.react(event);
   }
 
-  private effects(time: number, tick: number, ballX: number, celebration?: Celebration, lead?: Point) {
+  private effects(time: number, match: Match, celebration?: Celebration, lead?: Point) {
+    const { tick } = match;
     const elapsed = celebration ? time - celebration.tick / 60 : -1;
     const age = elapsed % (celebration?.kind === 'fulltime' ? 2.2 : 1.43);
     const amount = clamp(1 - age / SPARK_TTL, 0, 1);
-    const net = celebration?.kind === 'goal' ? clamp(1 - elapsed / SPARK_TTL, 0, 1) : 0;
-    this.stadium.update(time, tick, this.level, ballX, this.arena.get(tick), this.goalSide, net * net);
-    this.sparkMesh.visible = age >= 0 && age < SPARK_TTL;
+    this.stadium.update(time, tick, this.level, match.currentBall.x, this.arena.get(tick), match.netImpact);
+    this.sparkMesh.visible = age >= 0 && age < SPARK_TTL && (celebration?.kind !== 'goal' || elapsed > 1.45);
     if (!this.sparkMesh.visible) return;
     const limit = qualityLevels[this.level].sparkCount;
     this.sparkMesh.count = limit;
@@ -171,48 +159,36 @@ export class BroadcastRenderer {
       const glance = pair && (i === pair.player || i === pair.partner) ? {
         partner: match.players[i === pair.player ? pair.partner : pair.player], elapsed: time - pair.tick / 60,
       } : undefined;
-      ch.animate(alpha, time, dt, show.getGesture(i, match.tick), this.camera.focus === i, match.owner?.id === i, glance);
+      const restart = match.ballReturn?.thrower === i ? match.ballReturn : undefined;
+      const lift = restart && restart.stage !== 'collect' ? restart.stage === 'carry' ? 0 : clamp((match.tick - restart.since) / 39.6, 0, 1) : undefined;
+      const pickup = restart?.stage === 'collect' ? clamp(1 - Math.hypot(match.players[i].x - match.currentBall.x, match.players[i].z - match.currentBall.z) / 1.6, 0, 1) :
+        restart?.stage === 'carry' ? clamp(1 - (match.tick - restart.since) / 17, 0, 1) : 0;
+      const heldPosition = lift === undefined && match.heldKeeper?.id !== i ? undefined : {
+        x: mix(match.previousBall.x, match.currentBall.x, alpha), y: mix(match.previousBall.y, match.currentBall.y, alpha), z: mix(match.previousBall.z, match.currentBall.z, alpha),
+      };
+      ch.animate(alpha, time, dt, show.getGesture(i, match.tick), this.camera.focus === i, match.owner?.id === i, glance, lift, pickup, heldPosition);
       this.shadows[i].position.x = ch.root.position.x + 0.10;
       this.shadows[i].position.z = ch.root.position.z - 0.085;
     }
-    this.effects(time, match.tick, match.currentBall.x, celebration, celebration?.lead === undefined ? undefined : this.chars[celebration.lead].root.position);
+    this.effects(time, match, celebration, celebration?.lead === undefined ? undefined : this.chars[celebration.lead].root.position);
     this.articulated.update();
     const favorite = this.favorite === undefined ? undefined : this.chars[this.favorite];
     this.heroRing.visible = !!favorite && match.state !== 'halftime' && match.state !== 'fulltime';
     if (favorite) this.heroRing.position.set(favorite.root.position.x, 0.046, favorite.root.position.z);
     this.ball.visible = match.ballVisible;
-    this.ballRing.visible = match.ballVisible;
     const ballShadow = this.shadows[this.shadows.length - 1];
     ballShadow.visible = this.ball.visible;
     if (match.ballVisible) {
       const a = match.previousBall, b = match.currentBall;
       this.ball.position.set(mix(a.x, b.x, alpha), mix(a.y, b.y, alpha), mix(a.z, b.z, alpha));
-      if (match.owner?.role === 'keeper') this.ball.position.lerp(this.chars[match.owner.id].gloveMidpoint(keeperHands), 0.92);
       this.ball.quaternion.set(match.previousRotation.x, match.previousRotation.y, match.previousRotation.z, match.previousRotation.w);
       ballRotation.set(match.currentRotation.x, match.currentRotation.y, match.currentRotation.z, match.currentRotation.w);
       this.ball.quaternion.slerp(ballRotation, alpha);
-      this.ballRing.position.x = this.ball.position.x;
-      this.ballRing.position.z = this.ball.position.z;
-      const crowded = match.players.some(p => Math.hypot(this.ball.position.x - p.x, this.ball.position.z - p.z) < 0.97);
-      const airborneKick = !!match.flight && match.flight.style !== 'ground' && this.ball.position.y > 0.67;
-      this.ballRing.material.depthTest = !crowded;
-      this.ballRing.material.color.set(airborneKick ? '#ffe296' : '#2c1c42');
-      this.ballRing.material.opacity = airborneKick ? 0.87 : crowded ? 0.43 : 0.68;
-      const marker = 1 + Math.min(0.6, this.ball.position.y * 0.22) + (this.baseWidth < 600 ? 0.28 : 0) + (airborneKick || crowded ? 0.21 : 0);
-      this.ballRing.scale.set(marker, marker, 1);
       ballShadow.position.x = this.ball.position.x + this.ball.position.y * 0.19;
       ballShadow.position.z = this.ball.position.z - this.ball.position.y * 0.11;
-      const shadowSize = 0.65 + this.ball.position.y * 0.18;
+      const shadowSize = 0.67 + this.ball.position.y * 0.15;
+      (ballShadow.material as T.MeshBasicMaterial).opacity = 1 / (1 + this.ball.position.y * .36);
       ballShadow.scale.set(shadowSize, shadowSize, 1);
-    }
-    const moment = show.moment;
-    const impactAge = moment ? (match.tick + alpha - moment.tick) / 60 : 0;
-    this.impactRing.visible = !!moment?.point && (moment.kind === 'post' || moment.kind === 'save' || moment.kind === 'steal') && impactAge < 0.55;
-    if (this.impactRing.visible && moment?.point) {
-      this.impactRing.position.x = moment.point.x;
-      this.impactRing.position.z = moment.point.z;
-      this.impactRing.scale.setScalar(0.58 + impactAge * 1.94);
-      this.impactRing.material.opacity = 0.8 * (1 - impactAge / 0.55);
     }
     this.camera.update(match, dt, show, this.positions);
     this.renderer.render(this.scene, this.camera.camera);

@@ -1,13 +1,13 @@
 const bands = [155, 226, 305, 397, 508, 638, 793, 977, 1195, 1451, 1753, 2110, 2532, 3045, 3658, 4410, 5338, 6490, 7910, 9500];
 const TAU = Math.PI * 2;
 const profiles = {
-  am_michael: { pitch: 171, transpose: 1.30, formant: 1.10, wobble: .059, spring: .17, rate: 6.1, shape: 'reed' },
-  bf_emma: { pitch: 264, transpose: 1.12, formant: 1.09, wobble: .049, spring: .14, rate: 5.6, shape: 'bell' },
+  am_michael: { pitch: 156, transpose: 1.16, formant: 1.035, wobble: .014, spring: .075, rate: 4.7, shape: 'cat' },
+  bf_emma: { pitch: 249, transpose: 1.19, formant: 1.085, wobble: .018, spring: .082, rate: 5.2, shape: 'mouse' },
 };
 
 const waveforms = {
-  reed: (phase, angle) => .49 * (phase < .34 ? .82 : -.64) + .25 * (phase * 2 - 1) + .26 * Math.sin(angle),
-  bell: (phase, angle) => .76 * Math.sin(angle + 1.32 * Math.sin(3 * angle)) + .24 * (phase * 2 - 1),
+  cat: angle => .70 * Math.sin(angle) + .23 * Math.sin(2 * angle) + .07 * Math.sin(3 * angle),
+  mouse: angle => .84 * Math.sin(angle + .26 * Math.sin(2 * angle)) + .16 * Math.sin(2 * angle),
 };
 const unit = value => Math.max(0, Math.min(1, value));
 
@@ -117,7 +117,7 @@ export function cartoonVoice(pcm, line, id, rate = 24000) {
   const voices = voicing(speech, rate, hop);
   const excited = /^(goal|equalizer|late|leadChange|backInIt|\w+Goal|\w+Payback)/.test(id);
   const measured = /^(ownGoal|quietBuild|halfTime|.*Recap)/.test(id);
-  const register = measured ? .96 : excited ? 1.09 : 1;
+  const register = measured ? .97 : excited ? 1.045 : 1;
   const articulation = shiftedArticulation(speech, profile, rate, measured ? .98 : excited ? 1.035 : 1);
   const analysis = filters(rate, 1);
   const synth = filters(rate, profile.formant);
@@ -131,6 +131,7 @@ export function cartoonVoice(pcm, line, id, rate = 24000) {
   const shapeEnd = line.text.endsWith('?') ? .12 : -.09;
   let phase = 0, note = profile.pitch, fast = 0, slow = 0, peak = 0, energy = 0, active = 0, seed = 0x59cf0c5d;
 
+  let warmth = 0;
   for (let i = 0; i < work; i++) {
     const t = i / hop;
     const before = Math.floor(t);
@@ -151,7 +152,7 @@ export function cartoonVoice(pcm, line, id, rate = 24000) {
     seed ^= seed >>> 17;
     seed ^= seed << 5;
     const noise = (seed >>> 0) / 2147483648 - 1;
-    const carrier = tone(phase, phase * TAU) * (.19 + .75 * weight) + noise * (.83 - .73 * weight);
+    const carrier = tone(phase * TAU) * (.19 + .75 * weight) + noise * (.83 - .73 * weight);
     let sound = 0;
     for (let band = 0; band < bands.length; band++) {
       const m = analysis.gain[band] * sample + analysis.z1[band];
@@ -164,12 +165,14 @@ export function cartoonVoice(pcm, line, id, rate = 24000) {
       synth.z1[band] = synth.z2[band] - synth.first[band] * c;
       synth.z2[band] = -synth.gain[band] * carrier - synth.second[band] * c;
       carrierLoudness[band] += (Math.abs(c) - carrierLoudness[band]) * .004;
-      const presence = band < 2 ? .63 : band > 11 ? 1.19 : 1;
+      const presence = band < 2 ? .63 : band > 11 ? .84 : 1;
       sound += c * contour[band] / (.036 + carrierLoudness[band]) * presence;
     }
     const fade = Math.min(1, i / 115, (work - i) / tail);
     const instrument = sound / (1 + Math.abs(sound) * 1.5);
-    const shaped = (.25 * instrument + .84 * articulation[i]) * fade;
+    const voiced = .14 * instrument + .92 * articulation[i];
+    warmth += .64 * (voiced - warmth);
+    const shaped = (.78 * warmth + .22 * voiced) * fade;
     out[i] = shaped;
     peak = Math.max(peak, Math.abs(shaped));
     if (fast > .010) { energy += shaped * shaped; active++; }
@@ -178,16 +181,5 @@ export function cartoonVoice(pcm, line, id, rate = 24000) {
   const gain = Math.min(.76 / peak, .14 / Math.sqrt(energy / active));
   const rendered = Buffer.alloc(pcm.length);
   for (let i = 0; i < work; i++) rendered.writeInt16LE(Math.round(out[i] * gain * 32767), i * 2);
-  if (/^(boothHello|goalOne|postBoothReply)/.test(id)) {
-    const chime = profile.shape === 'bell';
-    const length = Math.round(.102 * rate), start = count - Math.round(.116 * rate);
-    for (let i = 0; i < length; i++) {
-      const t = i / rate, decay = Math.min(1, i / (.004 * rate)) * (1 - i / length) ** 2;
-      const note = chime ? .7 * Math.sin(TAU * 880 * t) + .3 * Math.sin(TAU * 1320 * t) :
-        Math.sin(TAU * (420 * t - 1120 * t * t));
-      const index = (start + i) * 2;
-      rendered.writeInt16LE(rendered.readInt16LE(index) + Math.round(note * decay * .064 * 32767), index);
-    }
-  }
   return rendered;
 }

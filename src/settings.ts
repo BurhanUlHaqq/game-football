@@ -50,7 +50,7 @@ export function settingsFrom(search: string, storage?: StorageAccess): Settings 
     audio: choose(query.get('audio') ?? pref.audio, audioModes, 'auto'),
     hud: choose(query.get('hud') ?? pref.hud, hudModes, 'minimal'),
     fps: choose(query.has('fps') ? Number(query.get('fps')) : mode === 'capture' ? 30 : pref.fps, rates, mode === 'capture' ? 30 : 60),
-    master: volume(pref.master, 0.62), music: volume(pref.music, 0), effects: volume(pref.effects, 0.78),
+    master: volume(pref.master, 0.62), music: query.get('music') === 'off' ? 0 : query.get('music') === 'on' ? volume(pref.music, .36) || .36 : volume(pref.music, .36), effects: volume(pref.effects, 0.78),
     commentary: query.get('commentary') === 'off' ? 0 : query.get('commentary') === 'on' ? 0.88 : volume(pref.commentary, 0.88),
     names: [sanitizeName(query.get('teamA'), defaultNames[0]), sanitizeName(query.get('teamB'), defaultNames[1])],
     seed: /^[\w.-]{1,48}$/.test(seed) ? seed : 'zeerush',

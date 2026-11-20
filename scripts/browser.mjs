@@ -3,15 +3,19 @@ import { access, mkdir, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { arch, cpus, platform, release } from 'node:os';
 import { chromium } from 'playwright';
+import { verifyStadiumBand } from './check-stadium-band.mjs';
 import { FULLTIME_BREAK, GOAL_BREAK, HALFTIME_BREAK, KICKOFF_TICKS } from '../src/football.ts';
 
 const soak = process.argv.includes('--soak');
 const smoke = process.argv.includes('--smoke');
+const musicOnly = process.argv.includes('--music');
+// This fixture includes a diving save, a goal, and a captain recap in its opening minute.
+const actionSeed = soak || smoke ? 'zeerush' : 'grandstand-27';
 const minutes = Number(process.env.SOAK_MINUTES ?? 20);
 assert.ok(Number.isFinite(minutes) && minutes > 0 && minutes <= 1440);
 const origin = `http://127.0.0.1:${process.env.PORT ?? 41730}`;
 const soakName = minutes === 20 ? 'soak' : `soak-${String(minutes).replace('.', 'p')}min`;
-const reportPath = soak ? `artifacts/${soakName}.json` : 'artifacts/browser.json';
+const reportPath = soak ? `artifacts/${soakName}.json` : musicOnly ? 'artifacts/stadium-band-check.json' : 'artifacts/browser.json';
 await mkdir('artifacts', { recursive: true });
 const delay = ms => new Promise(res => setTimeout(res, ms));
 const healthy = () => fetch(origin).then(async r => r.ok && (await r.text()).includes('id="broadcast"')).catch(() => false);
@@ -39,7 +43,7 @@ const record = (name, value) => { milestones[name] = value; console.log(`${name}
 
 async function monitorSmallScreen(page) {
   return page.evaluate(() => new Promise(resolve => {
-    const selector = ['#rivals', '#commentary', '#callout', '#recap', '#hero-toggle'];
+    const selector = ['#rivals', '#commentary', '#callout', '#recap', '#hero-toggle', '#line-ruling'];
     const elements = selector.map(id => document.querySelector(id));
     const seen = Object.fromEntries(selector.map(id => [id, 0]));
     let samples = 0;
@@ -55,7 +59,7 @@ async function monitorSmallScreen(page) {
         resolve({ samples, overlaps, clipped, duplicate, boothCaptions, seen });
         return;
       }
-      if (!framing.ballVisible) return;
+      if (!framing.ballVisible || framing.mode === 'celebration' || framing.mode === 'supporters') return;
       const x = (framing.ballX + 1) * innerWidth / 2;
       const y = (1 - framing.ballY) * innerHeight / 2;
       samples++;
@@ -92,7 +96,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   collect(page);
-  if (!soak && !smoke) {
+  if (!soak && !smoke && !musicOnly) {
     await page.addInitScript(() => {
       const NativeAudio = window.AudioContext;
       let unlocked = false;
@@ -117,7 +121,7 @@ try {
     });
   }
   const quality = process.env.RUSH_QUALITY ?? (soak ? 'auto' : 'high');
-  if (!soak) {
+  if (!soak && !musicOnly) {
     await page.goto(`${origin}/?quality=${quality}&audio=muted`, { waitUntil: 'domcontentloaded' });
     await page.locator('#loading').waitFor({ state: 'hidden', timeout: 30000 });
     assert.ok(await page.locator('#operator').isHidden());
@@ -143,7 +147,7 @@ try {
     record('heroes', { portraits: portraits.length, restored: 'Doodle', cleared: true });
     if (smoke) { record('default', { clock: await page.locator('#clock').textContent() }); }
   }
-  await page.goto(`${origin}/?mode=debug&seed=zeerush&quality=${quality}&audio=${soak ? 'muted' : 'auto'}&session=new`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${origin}/?mode=debug&seed=${actionSeed}&quality=${quality}&audio=${soak ? 'muted' : 'auto'}&session=new`, { waitUntil: 'domcontentloaded' });
   await waitUntil(page, () => window.rush?.snapshot().state === 'live', 35000);
   const initial = await snapshot(page);
   const gpu = await page.evaluate(() => {
@@ -157,7 +161,10 @@ try {
   assert.equal(initial.render.viewportHeight, 1080);
   if (quality === 'high') assert.deepEqual([initial.render.pixelWidth, initial.render.pixelHeight], [1920, 1080]);
 
-  if (soak) {
+  if (musicOnly) {
+    await page.close();
+    record('stadiumBand', await verifyStadiumBand(browser,origin,collect));
+  } else if (soak) {
     const samples = [];
     const began = performance.now();
     await page.keyboard.press('d');
@@ -170,7 +177,7 @@ try {
       console.log(`Soak ${samples.at(-1).wallSeconds.toFixed(1)}s tick=${latest.tick} score=${latest.scores.join('-')} fps=${latest.render.fps.toFixed(1)} calls=${latest.render.calls}`);
       assert.equal(latest.resources.bodies, initial.resources.bodies);
       assert.equal(latest.resources.colliders, initial.resources.colliders);
-      assert.ok(latest.render.geometries >= initial.render.geometries && latest.render.geometries <= initial.render.geometries + 1, 'Only the shared impact ring may upload lazily');
+      assert.ok(latest.render.geometries === initial.render.geometries, 'The match reuses its uploaded geometry');
       assert.equal(latest.render.textures, initial.render.textures);
       assert.ok(latest.resources.history <= latest.resources.eventLimit && latest.render.particles <= 42 && latest.voices <= latest.maxVoices);
       assert.equal(latest.stats.faults, 0);
@@ -194,7 +201,7 @@ try {
     await waitUntil(page, () => window.rush.snapshot().audio === 'on');
     await waitUntil(page, () => {
       const audio = window.rush.snapshot();
-      return audio.commentaryPlayed > 0 && audio.effectsPlayed > 0 && audio.accentsPlayed > 0 && window.outputLevel() > 0.005;
+      return audio.music?.phrases > 0 && audio.commentaryPlayed > 0 && audio.effectsPlayed > 0 && audio.accentsPlayed > 0 && window.outputLevel() > 0.005;
     }, 40000);
     const audible = await snapshot(page);
     await page.keyboard.press('o');
@@ -261,8 +268,9 @@ try {
         const celebration = current.show.celebration;
         assert.equal(celebration.team, goal.team);
         assert.equal(current.show.gestures[celebration.lead], goal.team === 0 ? 'double-hop' : 'victory-twirl');
-        assert.equal(current.show.framing.mode, 'celebration');
-        assert.ok(current.render.particles > 0);
+        assert.equal(current.show.framing.mode, 'goal-line');
+        assert.ok(current.show.framing.ballVisible);
+        assert.equal(current.render.particles, 0);
         await page.screenshot({ path: 'artifacts/goal.png' });
       }
       const save = current.history.findLast(event => event.kind === 'save');
@@ -285,7 +293,7 @@ try {
     await page.screenshot({ path: 'artifacts/play-resumed.png' });
     record('actions', { score: current.scores, stats: current.stats, goalToKickoffSeconds: (after.tick - goalTick) / 60 });
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('zeerush.match.v2')));
-    await page.goto(`${origin}/?mode=debug&seed=zeerush&hud=off&audio=muted&session=resume`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${origin}/?mode=debug&seed=${actionSeed}&hud=off&audio=muted&session=resume`, { waitUntil: 'domcontentloaded' });
     await waitUntil(page, () => window.rush?.snapshot().state === 'live');
     const restored = await snapshot(page);
     assert.ok(restored.restarted);
@@ -319,7 +327,7 @@ try {
         await edge.addInitScript(cp => localStorage.setItem('zeerush.match.v2', JSON.stringify(cp)), {
           ...stored, ticks: end - (period === 'halftime' ? 1560 : 65), scores: [2, 1], seriesGoals: [2, 1], goalId: 3, wins: [0, 0], draws: 0, shots: [11, 9], saves: [3, 4],
         });
-        await edge.goto(`${origin}/?mode=debug&seed=zeerush&quality=high&audio=muted&session=resume`, { waitUntil: 'domcontentloaded' });
+        await edge.goto(`${origin}/?mode=debug&seed=${actionSeed}&quality=high&audio=muted&session=resume`, { waitUntil: 'domcontentloaded' });
         await waitUntil(edge, () => !!window.rush);
         await edge.keyboard.press('d');
         await edge.waitForFunction(kind => window.rush.snapshot().state === kind, period);
@@ -373,7 +381,7 @@ try {
     try {
       const phone = await phoneContext.newPage();
       collect(phone);
-      await phone.goto(`${origin}/?mode=debug&quality=high&audio=muted&seed=zeerush&session=new`, { waitUntil: 'domcontentloaded' });
+      await phone.goto(`${origin}/?mode=debug&quality=high&audio=muted&seed=${actionSeed}&session=new`, { waitUntil: 'domcontentloaded' });
       await waitUntil(phone, () => window.rush?.snapshot().state === 'live');
       await phone.keyboard.press('d');
       assert.ok(await phone.locator('#rivals').isVisible());
@@ -388,7 +396,7 @@ try {
       assert.equal(action.audio, 'muted');
       await phone.screenshot({ path: 'artifacts/phone-goalmouth.png' });
       const sightlines = await phoneMonitoring;
-      assert.ok(sightlines.samples >= 180 && sightlines.seen['#rivals'] > 0 && sightlines.seen['#commentary'] > 0 && sightlines.seen['#callout'] > 0);
+      assert.ok(sightlines.samples >= 180 && sightlines.seen['#rivals'] > 0 && sightlines.seen['#commentary'] > 0 && (sightlines.seen['#callout'] > 0 || sightlines.seen['#line-ruling'] > 0));
       assert.ok(sightlines.boothCaptions > 0, 'Booth captions appear in muted play');
       assert.equal(sightlines.clipped + sightlines.overlaps + sightlines.duplicate, 0);
       await phone.keyboard.press('o');
@@ -421,6 +429,8 @@ try {
       await phone.screenshot({ path: 'artifacts/phone-portrait.png' });
       record('phone', { landscape: [390, 220], portrait: [390, 844], camera: action.show.framing, event: action.show.moment.kind, sightlines, recap: recapText, sound: [action.audio, characterAudio.audio], host: characterAudio.show.booth.host, line: characterAudio.lastSpoken });
     } finally { await phoneContext.close(); }
+    await page.close();
+    record('stadiumBand', await verifyStadiumBand(browser,origin,collect));
   }
   assert.ok([...requests].every(r => r.startsWith(origin) || r.startsWith('data:')));
   assert.deepEqual(errors, []);

@@ -2,6 +2,7 @@ import * as T from 'three';
 import { box, cylinder, flat, instances, material, mesh, plane, sphere, textTexture } from './art';
 import type { StaticShape } from './art';
 import { ArenaCrowd } from './arena-crowd';
+import type { NetImpact } from './match';
 import type { FanSeat } from './arena-crowd';
 import { ArenaDisplays, ArenaMascots, fanColors, supporterSigns } from './arena-decor';
 import { fanReaction } from './arena-show';
@@ -20,8 +21,8 @@ const coral = material('#f87878');
 const mint = material('#75d9c5');
 const amber = material('#ffbf66');
 const paper = material('#ffead6');
-const netColor = new T.LineBasicMaterial({ color: '#fff2db', transparent: true, opacity: 0.62 });
-const lightFloor = material('#b27889');
+const netColor = new T.LineBasicMaterial({ color: '#fff2db', transparent: true, opacity: 0.78 });
+const lightFloor = material('#ca9874');
 const track = material('#89596f');
 
 function grass() {
@@ -42,7 +43,7 @@ function grass() {
 
 function turf(scene: T.Scene) {
   mesh(scene, box, track, 0, -0.56, 0, 72, 1, 50);
-  mesh(scene, box, lightFloor, 0, -0.091, 0, 52.5, 0.16, 29.5);
+  mesh(scene, box, lightFloor, 0, -0.091, 0, 52.5, 0.16, 30.2);
   const concourse = material('#946578');
   const tiles: StaticShape[] = [];
   for (let row = 0; row < 3; row++) for (let i = -9; i <= 9; i++) {
@@ -53,16 +54,18 @@ function turf(scene: T.Scene) {
   mesh(scene, box, beam, 0, -0.027, 14.91, 67, 0.05, 0.115);
   mesh(scene, box, cream, 0, -0.021, 15.04, 67, 0.057, 0.061);
   const [stripeA, stripeB] = grass();
-  const width = (FIELD.x + 2.8) * 2 / 12;
+  const width = FIELD.x * 2 / 12;
   for (let i = 0; i < 12; i++) {
-    const patch = mesh(scene, plane, i % 2 === 0 ? stripeA : stripeB, width * (i - 5.5), 0, 0, width + 0.003, 2 * (FIELD.z + 0.28), 1);
+    const patch = mesh(scene, plane, i % 2 === 0 ? stripeA : stripeB, width * (i - 5.5), 0, 0, width + 0.003, 2 * FIELD.z, 1);
     patch.rotation.x = -Math.PI / 2;
   }
   const line = (x: number, z: number, width: number, depth: number) => mesh(scene, box, turfLine, x, 0.015, z, width, 0.012, depth);
-  const w = 0.095;
+  const w = .135;
+  const goalFloor = material('#477c6d');
   for (const s of [-1, 1]) {
-    line(0, s * (FIELD.z - 0.12), FIELD.x * 2, w);
-    line(s * FIELD.x, 0, w, (FIELD.z - 0.12) * 2);
+    mesh(scene, box, goalFloor, s * (FIELD.x + FIELD.net / 2), -.013, 0, FIELD.net, .024, FIELD.goal * 2);
+    line(0, s * (FIELD.z - w / 2), FIELD.x * 2, w);
+    line(s * (FIELD.x - w / 2), 0, w, FIELD.z * 2);
     for (const q of [-1, 1]) {
       line(s * (FIELD.x - 2.9), q * 6.75, 5.8, w);
       line(s * (FIELD.x - 1.22), q * 4.20, 2.44, w);
@@ -73,7 +76,7 @@ function turf(scene: T.Scene) {
     const arc = new T.RingGeometry(2.9, 2.995, 32, 1, s > 0 ? Math.PI * 0.67 : -Math.PI * 0.33, Math.PI * 0.66);
     mesh(scene, arc, turfLine, s * (FIELD.x - 4.4), 0.022, 0, 1, 1, 1).rotation.x = -Math.PI / 2;
   }
-  line(0, 0, w, (FIELD.z - 0.12) * 2);
+  line(0, 0, w, FIELD.z * 2);
   mesh(scene, new T.RingGeometry(3.67, 3.77, 72), turfLine, 0, 0.020, 0, 1, 1, 1).rotation.x = -Math.PI / 2;
   mesh(scene, cylinder, turfLine, 0, 0.02, 0, 0.14, 0.018, 0.14);
 }
@@ -99,7 +102,8 @@ function letterMat(fill: string, label: string, line: string, ink: string) {
 
 function boards(scene: T.Scene, display: ArenaDisplays) {
   const signs = [letterMat('#342e52', 'ZEERUSH', 'GAMING', '#fff0d8'), letterMat('#a74464', 'RUSH ARENA', '', '#ffe2a3'), letterMat('#235664', 'FIVE A SIDE', '', '#d3ffdf')];
-  const { x, z, goal, board } = FIELD;
+  const { goal, board } = FIELD;
+  const x = FIELD.x + FIELD.net + .99, z = FIELD.z + FIELD.runoff;
   for (const side of [-1, 1]) {
     const height = side === 1 ? 0.77 : board;
     mesh(scene, box, steel, 0, height / 2, side * (z + 0.11), x * 2 + 0.40, height, 0.22);
@@ -128,28 +132,36 @@ function goals(scene: T.Scene) {
       mesh(scene, box, side > 0 ? mint : coral, side * x, 0.14, z, post * 2.17, 0.28, post * 2.17);
       mesh(scene, box, cream, side * (x + net), 1.12, z, 0.093, 2.24, 0.093);
       mesh(scene, box, cream, side * (x + net / 2), 0.055, z, net + 0.09, 0.095, 0.095);
-      const brace = mesh(scene, box, cream, side * (x + net / 2), (bar + 2.22) / 2, z, Math.hypot(net, bar - 2.22), 0.085, 0.085);
-      brace.rotation.z = -side * Math.atan2(bar - 2.22, net);
+      const brace = mesh(scene, box, cream, side * (x + net / 2), (bar + FIELD.backHeight) / 2, z, Math.hypot(net, bar - FIELD.backHeight), 0.085, 0.085);
+      brace.rotation.z = -side * Math.atan2(bar - FIELD.backHeight, net);
     }
     mesh(scene, box, cream, side * x, bar, 0, post * 2, post * 2, goal * 2 + post * 2);
-    mesh(scene, box, cream, side * (x + net), 2.22, 0, 0.093, 0.093, goal * 2);
+    mesh(scene, box, cream, side * (x + net), FIELD.backHeight, 0, 0.093, 0.093, goal * 2);
     const points: number[] = [];
-    const pack = (...values: number[]) => points.push(...values);
+    const pack = (...values: number[]) => {
+      for (let k = 0; k < values.length; k += 6) {
+        const [ax, ay, az, bx, by, bz] = values.slice(k, k + 6);
+        const count = Math.ceil(Math.hypot(bx - ax, by - ay, bz - az) / .42);
+        for (let n = 0; n < count; n++) {
+          for (const f of [n / count, (n + 1) / count]) points.push(mix(ax,bx,f), mix(ay,by,f), mix(az,bz,f));
+        }
+      }
+    };
     for (let i = 0; i <= 22; i++) {
       const z = mix(-goal, goal, i / 22);
-      pack(side * x, bar, z, side * (x + net), 2.22, z, side * (x + net), 2.22, z, side * (x + net), 0.04, z);
+      pack(side * x, bar, z, side * (x + net), FIELD.backHeight, z, side * (x + net), FIELD.backHeight, z, side * (x + net), 0.04, z);
     }
     for (let i = 0; i <= 9; i++) {
       const depth = net * i / 9;
-      const h = mix(bar, 2.22, i / 9);
+      const h = mix(bar, FIELD.backHeight, i / 9);
       const xx = side * (x + depth);
       pack(xx, h, -goal, xx, h, goal);
       for (const z of [-goal, goal]) pack(xx, h, z, xx, 0.04, z);
     }
     for (let i = 0; i <= 8; i++) {
       const frac = i / 8;
-      pack(side * (x + net), 2.22 * frac, -goal, side * (x + net), 2.22 * frac, goal);
-      for (const z of [-goal, goal]) pack(side * x, bar * frac, z, side * (x + net), 2.22 * frac, z);
+      pack(side * (x + net), FIELD.backHeight * frac, -goal, side * (x + net), FIELD.backHeight * frac, goal);
+      for (const z of [-goal, goal]) pack(side * x, bar * frac, z, side * (x + net), FIELD.backHeight * frac, z);
     }
     const geometry = new T.BufferGeometry();
     const base = Float32Array.from(points);
@@ -196,14 +208,14 @@ function grandstand(scene: T.Scene, rng: Random) {
         rails.push({ ...span, y: floor + 0.37, sx: 0.09, sy: 0.76, sz: 0.10, color: '#f3c5ab' });
         continue;
       }
-      for (let seat = 0, seatsInSpan = Math.max(1, Math.floor(span.width / 0.72)); seat < seatsInSpan; seat++) {
-        const shift = (seat + 0.5 - seatsInSpan / 2) * 0.74;
+      for (let seat = 0, seatsInSpan = Math.max(1, Math.floor(span.width / .95)); seat < seatsInSpan; seat++) {
+        const shift = (seat + 0.5 - seatsInSpan / 2) * .95;
         const x = span.x + Math.cos(span.r) * shift;
         const z = span.z - Math.sin(span.r) * shift;
         const section = i % 33 < 16;
         seats.push({ x, z, y: floor + 0.095, r: span.r, sx: 0.58, sy: 0.23, sz: 0.48, color: section ? '#ad7891' : '#7b7099' });
-        if (rng.next() > (row === 0 ? 0.82 : 0.93)) continue;
-        crowd.push({ x, z, y: floor + .36, height: rng.range(.27, .41), phase: rng.range(0, 6.4), row, team: x < 0 ? 0 : 1 });
+        if (rng.next() > (row === 0 ? .96 : .92)) continue;
+        crowd.push({ x, z, y: floor + .36, height: rng.range(.29, .38), phase: rng.range(0, 6.4), row, team: x < 0 ? 0 : 1 });
       }
     }
   }
@@ -368,7 +380,7 @@ export class Stadium {
     scene.add(this.hemi, this.sun);
   }
 
-  update(time: number, tick: number, level: number, ballX: number, cue: ArenaCue | undefined, goalSide: number, wave: number) {
+  update(time: number, tick: number, level: number, ballX: number, cue: ArenaCue | undefined, impact?: NetImpact) {
     const evening = (1 - Math.cos(time * Math.PI / 540)) * 0.5;
     this.surroundings.update(time, evening);
     this.sun.color.copy(this.day).lerp(this.dusk, evening);
@@ -390,15 +402,20 @@ export class Stadium {
         geometry.computeVertexNormals();
       }
     }
+    const age = impact ? Math.max(0, time - impact.tick / 60) : 2;
+    const wave = impact && age < 1.05 ? impact.strength * Math.exp(-age * 3.9) * Math.sin(age * 19) : 0;
     if (this.lastNet !== wave) {
       this.lastNet = wave;
       for (const net of this.nets) {
         const coords = net.geometry.attributes.position;
         for (let i = 0; i < coords.count; i++) {
           const x = net.base[i * 3];
-          const z = net.base[i * 3 + 2];
-          const amplitude = net.side === goalSide ? wave * Math.max(0, Math.abs(x) - FIELD.x) * 0.13 : 0;
-          coords.setX(i, x + net.side * amplitude * Math.cos(z * 0.94 - time * 7));
+          const y = net.base[i * 3 + 1], z = net.base[i * 3 + 2];
+          const depth = Math.min(1, Math.max(0, (Math.abs(x) - FIELD.x) / .65));
+          const falloff = impact && net.side === impact.side ? Math.exp(-.54 * ((x-impact.point.x)**2 + (y-impact.point.y)**2 + (z-impact.point.z)**2)) : 0;
+          const ripple = wave * falloff * depth * Math.min(1, y * 4) * .83;
+          coords.setXYZ(i, x + (impact?.surface === 'back' ? net.side * ripple : 0),
+            y + (impact?.surface === 'roof' ? ripple : 0), z + (impact?.surface === 'side' ? Math.sign(z) * ripple : 0));
         }
         coords.needsUpdate = true;
       }

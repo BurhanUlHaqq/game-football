@@ -2,7 +2,33 @@
 
 The updated build was tested on Windows 11 26H2 x64 with an Intel Core Ultra 7 255H, Intel Arc 140T graphics, Node.js 24.22.3 and Chrome 157.0.8103.79. Chrome reported Intel graphics through ANGLE/D3D11.
 
-## Mick and Emma in the commentary booth
+## The stadium band
+
+The music-only sampler lasts 75 seconds. The six scores contain 48 different eight-bar arrangements lasting 12 minutes 17 seconds altogether. Their cue reels include both teams’ goal melodies and encores, a keeper response and the two period breaks. All 54 local Ogg files decoded with audible music in both instrument parts and all 42 event recordings. The stereo MP3 measures −15.9 LUFS integrated with a −1.7 dB true peak. [Hear the sampler](../artifacts/rush-arena-stadium-band.mp3)
+
+The 32-second match capture uses the normal game mixer and seed `grandstand-54`. Scruff gets its clarinet theme at 00:10, Mitts tips a shot at 00:22, and Scruff’s second goal brings in the answering instrument at 00:25. Seven booth captions accompany the play. The 1080p export has 48 kHz stereo audio at −17.7 LUFS integrated. [Watch the match excerpt](../artifacts/rush-arena-band-in-play.mp4)
+
+All 46 unit tests passed. The focused Chrome test solos the music through the capture track, checks silence before recording and at zero music volume, then follows the band into its next tune. It heard the three match cues and verified the halftime and full-time cues across the fixture boundaries. The test observed up to five music sources, including release tails and the cue, and three entries in the decoded-file cache. Run it with `npm run test:browser -- --music`. [Music verification](../artifacts/stadium-band-check.json)
+
+## Boot contact and goalkeeper physics
+
+The 20.6-second, 1080p preview combines two recorded plays. Mitts gets a glove to a high shot about three seconds in. Patch dives to hold a shot around 00:15, then drops the ball onto a swinging boot around 00:16. The scoreboard, shadows, commentary and music are from the game. [Watch the keeper physics preview](../artifacts/rush-arena-keeper-physics.mp4)
+
+The 43 automated tests include mirrored low catches, high tips, unreachable shots inside the post and wide misses. They also check a near miss between simulation frames, a full landing after a tip goes out of play, forward roll on a pass, backspin on a punt and the free fall between the keeper's hands and boot. The six-hour simulation covered 18 fixtures, 139 goals, 731 credited saves and 116 keeper distributions. It recorded zero physics faults. [Stress results](../artifacts/stress.json)
+
+Chrome completed the desktop and phone broadcast checks. The phone camera kept the ball in frame and clear of the overlaid panels in all 299 sampled frames. The exported H.264 video has 617 frames at 30 fps, with 48 kHz stereo audio peaking at −4.3 dBFS. [Browser results](../artifacts/browser.json)
+
+## Goal-line rulings, supporters and stadium audio
+
+The 35-second clip is a recording from the normal capture layout with the seed `grandstand-18`. Boulder scores at 00:09, the scoring supporters appear at 00:13, and Mitts returns two misses. The first goes wide at 00:22 and the second clears the bar at 00:27. Jom and Jerry deliver ten audible calls. The export is 1920×1080 H.264 at 30 fps with 48 kHz stereo AAC and a peak of −4.0 dBFS. [Match preview](../artifacts/rush-arena-goal-line-preview.mp4) · [Audio from the match](../artifacts/jom-and-jerry-match-audio.mp3)
+
+All 37 unit and simulation tests passed. They cover both goals, partial and diagonal crossings, real net contact, keeper throws, corner throws, sideline restarts, audible cues for all 480 scripts, and timely replies from the other host. Across six accelerated hours and 18 fixtures, the three seeds produced 914 outs and 910 throws. The period whistles ended the remaining four stoppages. Each seed recorded zero simulation faults and zero emergency recoveries. The longest completed throw restart took 7.35 seconds. [Simulation report](../artifacts/stress.json)
+
+Chrome sampled the ball during the goal-line and throw shots at 390×844 and 390×220, including the overhead release. None of those samples fell outside the picture or beneath the score, ruling or captions. In both layouts the music channel produced a signal with play paused before kickoff, fell below 0.0002 peak after the music fader reached zero, and returned above 0.13 peak when restored.
+
+The project's Chrome regression suite completed the halftime and full-time restarts and the refresh check. In the regular phone view it sampled 270 ball positions with zero clipping, card overlap or duplicate event captions. [Browser report](../artifacts/browser.json)
+
+## Earlier Mick and Emma commentary booth
 
 The packaged 24 kHz voice track contains 452 distinct audible clips, with 226 for each host and 32 scripted two-host exchanges. The automated tests check clip boundaries, signal levels, unique captions, matching replies, speaker credits, and interruption by goals and stoppages. An offline English recognizer matched 12 sampled performances to their scripts from a limited list of phrases. A byte comparison confirmed that those takes are in the game.
 

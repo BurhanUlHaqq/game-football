@@ -1,4 +1,5 @@
 import { Random } from './football';
+import { StadiumBand } from './stadium-band';
 import type { EventKind, MatchEvent } from './football';
 import type { Preferences } from './settings';
 import type { LineId } from './commentary';
@@ -9,6 +10,8 @@ import type { ArenaCue } from './arena-show';
 const MAX_VOICES = 10;
 type Sound = { seconds: number; filter: number; type: BiquadFilterType; volume: number; gap: number; tone?: number };
 const sounds: Partial<Record<EventKind, Sound>> = {
+  throw: { seconds: .20, filter: 780, type: 'bandpass', volume: .10, gap: .25 },
+  out: { seconds: .13, filter: 1100, type: 'bandpass', volume: .075, gap: .45, tone: 790 },
   pass: { seconds: .12, filter: 360, type: 'lowpass', volume: .15, gap: .09, tone: 130 },
   distribution: { seconds: .18, filter: 390, type: 'lowpass', volume: .16, gap: .13, tone: 108 },
   shot: { seconds: .21, filter: 550, type: 'lowpass', volume: .39, gap: .12, tone: 98 },
@@ -29,10 +32,6 @@ const loftSound: Sound = { seconds: .24, filter: 820, type: 'lowpass', volume: .
 const powerShotSound: Sound = { seconds: .29, filter: 660, type: 'lowpass', volume: .42, gap: .15, tone: 115 };
 const gloveCatch: Sound = { seconds: .23, filter: 510, type: 'lowpass', volume: .36, gap: .65, tone: 106 };
 const gloveTip: Sound = { seconds: .24, filter: 1570, type: 'bandpass', volume: .32, gap: .65, tone: 228 };
-const crowdBeats = {
-  kickoff: { gain: 1.16, hold: .38 }, save: { gain: 1.44, hold: .29 }, post: { gain: .45, hold: .18 },
-  goal: { gain: 1.72, hold: .72 }, halftime: { gain: 1.18, hold: .44 }, fulltime: { gain: 1.66, hold: .95 },
-};
 
 type Accent = { notes: readonly number[]; wave: OscillatorType; beat: number; volume: number; tail: number };
 const accents = {
@@ -53,7 +52,7 @@ export class MatchAudio {
   private effects?: GainNode;
   private music?: GainNode;
   private commentary?: GainNode;
-  private crowdGain?: GainNode;
+  private applause?: AudioBuffer;
   private output?: DynamicsCompressorNode;
   private recording?: MediaStreamAudioDestinationNode;
   private noise?: AudioBuffer;
@@ -64,7 +63,13 @@ export class MatchAudio {
   private readonly streaming = new AbortController();
   private readonly voices = new Set<AudioBufferSourceNode>();
   private readonly last = new Map<EventKind, number>();
-  private ambient: AudioBufferSourceNode[] = [];
+  private band?: StadiumBand;
+  private bandCueTick = -1;
+  get musicReady() { return this.band?.ready ?? false; }
+  get musicStatus() { return this.band?.status; }
+  get musicTitle() { return this.band?.title; }
+  startMusic() { this.musicStarted = true; this.band?.start(); }
+  closeFinish(value: boolean) { this.band?.setCloseFinish(value); }
   private recovery = false;
   commentaryPlayed = 0;
   lastSpoken?: LineId;
@@ -72,7 +77,7 @@ export class MatchAudio {
   accentsPlayed = 0;
   crowdReactions = 0;
 
-  constructor(private settings: Preferences) {}
+  constructor(private settings: Preferences, private musicSeed: string, private musicStarted: boolean) {}
 
   get status() { return this.settings.audio === 'muted' ? 'muted' : this.context?.state === 'running' ? 'on' : this.recovery ? 'unavailable' : 'blocked'; }
   get activeVoices() { return this.voices.size + Number(!!this.accentVoice); }
@@ -108,46 +113,37 @@ export class MatchAudio {
     const random = new Random('rush-sound-original');
     this.noise = create(2);
     const white = this.noise.getChannelData(0);
-    const crowd = create(8);
-    const amb = crowd.getChannelData(0);
-    let walk = 0;
-    for (let i = 0; i < amb.length; i++) {
-      const r = random.range(-1, 1);
-      if (i < white.length) white[i] = r;
-      walk = walk * 0.79 + r * 0.21;
-      const t = i / ctx.sampleRate;
-      const swell = 0.65 + 0.13 * Math.sin(t * Math.PI / 2) + 0.16 * Math.cos(t * Math.PI * 0.75);
-      amb[i] = (walk + (r - walk) * 0.07) * swell * 0.42;
+    for (let i = 0; i < white.length; i++) white[i] = random.range(-1, 1);
+    // A few pairs of hands on a big play. Each clap has three small, closely spaced attacks.
+    this.applause = create(.96);
+    const claps = this.applause.getChannelData(0);
+    for (const start of [.02, .09, .17, .28, .36, .47, .54, .68, .78]) {
+      let low = 0, mid = 0;
+      const amp = random.range(.075, .14);
+      for (let j = 0; j < ctx.sampleRate * .10; j++) {
+        const t = j / ctx.sampleRate;
+        low += .44 * (random.range(-1, 1) - low);
+        mid += .12 * (low - mid);
+        const envelope = Math.min(1, t * 550) * Math.exp(-t * 48) * (1 + .45 * Math.cos(t * 980));
+        claps[Math.floor(start * ctx.sampleRate) + j] += (low - mid) * envelope * amp;
+      }
     }
-    const bed = ctx.createBufferSource();
-    bed.buffer = crowd; bed.loop = true;
-    const low = ctx.createBiquadFilter(); low.type = 'lowpass'; low.frequency.value = 1130;
-    this.crowdGain = ctx.createGain();
-    bed.connect(low).connect(this.crowdGain).connect(this.effects); bed.start();
-    const tune = create(16);
-    const samples = tune.getChannelData(0);
-    const melody = [261.63, 329.63, 392, 440, 392, 329.63, 293.66, 392, 261.63, 329.63, 392, 523.25, 440, 392, 329.63, 293.66];
-    for (let i = 0; i < samples.length; i++) {
-      const t = i / ctx.sampleRate;
-      const index = Math.floor(t);
-      const a = t % 1;
-      const decay = Math.min(1, a * 21) * (1 - a) ** 3;
-      const wave = a * melody[index] * 2 * Math.PI;
-      samples[i] = 0.15 * decay * (Math.sin(wave) + Math.sin(wave * 2) * 0.19 + Math.sin(wave * 0.5) * 0.23);
-    }
-    const score = ctx.createBufferSource(); score.buffer = tune; score.loop = true;
-    score.connect(this.music); score.start();
-    this.ambient = [bed, score];
+    this.band = new StadiumBand(ctx, this.music, import.meta.env.BASE_URL, this.musicSeed);
+    this.band.setEnabled(this.settings.audio !== 'muted' && this.settings.music > 0);
+    if (this.musicStarted) this.band.start();
   }
 
   arena(cue?: ArenaCue) {
-    if (!cue || this.status !== 'on' || !this.context || !this.crowdGain || this.settings.effects === 0) return;
-    const start = this.context.currentTime;
-    const gain = this.crowdGain.gain;
-    const beat = crowdBeats[cue.kind];
-    gain.cancelAndHoldAtTime(start);
-    gain.setTargetAtTime(beat.gain, start, cue.kind === 'post' ? .052 : .105);
-    gain.setTargetAtTime(1, start + beat.hold, .30);
+    const ctx = this.context;
+    if (!cue || !ctx || this.status !== 'on' || !this.applause || !this.effects || !this.settings.effects ||
+        cue.kind === 'post' || cue.kind === 'out' || this.activeVoices >= MAX_VOICES) return;
+    const source = ctx.createBufferSource(), level = ctx.createGain();
+    source.buffer = this.applause;
+    level.gain.value = cue.kind === 'goal' || cue.kind === 'fulltime' ? .65 : .34;
+    source.connect(level).connect(this.effects);
+    this.voices.add(source);
+    source.onended = () => { this.voices.delete(source); source.disconnect(); level.disconnect(); };
+    source.start();
     this.crowdReactions++;
   }
 
@@ -170,6 +166,7 @@ export class MatchAudio {
 
   update(settings: Preferences) {
     this.settings = settings;
+    this.band?.setEnabled(settings.audio !== 'muted' && settings.music > 0);
     if (!this.context || !this.master || !this.effects || !this.music || !this.commentary) return;
     const t = this.context.currentTime;
     if ((settings.audio === 'muted' || settings.commentary === 0) && this.speech) {
@@ -178,7 +175,7 @@ export class MatchAudio {
     this.master.gain.setTargetAtTime(settings.audio === 'muted' ? 0 : settings.master, t, 0.060);
     const duck = this.speech && settings.commentary > 0 && settings.audio !== 'muted';
     this.effects.gain.setTargetAtTime(settings.effects * (duck ? 0.46 : 1), t, 0.060);
-    this.music.gain.setTargetAtTime(settings.music * (duck ? 0.24 : 1), t, 0.060);
+    this.music.gain.setTargetAtTime(settings.music * (duck ? .33 : .96), t, settings.music === 0 ? .045 : duck ? .065 : .50);
     this.commentary.gain.setTargetAtTime(settings.commentary, t, 0.045);
   }
 
@@ -234,8 +231,10 @@ export class MatchAudio {
   }
 
   react(event: MatchEvent) {
+    const playedCue = this.band?.react(event);
+    if (playedCue) this.bandCueTick = event.tick;
     const style = event.flight?.style;
-    const spec = event.save?.held ? gloveCatch : event.save?.move === 'tip' ? gloveTip
+    const spec = event.kind === 'throw' ? sounds.throw : event.save?.held ? gloveCatch : event.save?.move === 'tip' ? gloveTip
       : style === 'long-shot' ? powerShotSound : style === 'loft' || style === 'switch' ? loftSound : sounds[event.kind];
     const ctx = this.context;
     if (!spec || this.status !== 'on' || !ctx || !this.effects || !this.noise || this.settings.effects === 0 || this.activeVoices >= MAX_VOICES) return;
@@ -269,10 +268,11 @@ export class MatchAudio {
     };
     source.start(now, (event.tick % 19) * .027, spec.seconds);
     this.effectsPlayed++;
-    if (event.kind === 'fulltime') this.playAccent(accents.finale, 4, 0.7);
+    if (event.kind === 'fulltime' && !playedCue) this.playAccent(accents.finale, 4, 0.7);
   }
 
   accent(moment: ShowMoment) {
+    if (moment.kind === 'goal' && moment.tick === this.bandCueTick) return;
     const priority = moment.kind === 'goal' ? 3 : moment.kind === 'post' || moment.joke ? 2 : 1;
     const gag = moment.joke;
     const key = gag === 'stretch' || gag === 'shrug' || gag === 'wave' ? gag : moment.kind === 'goal' && moment.team === 1 ? 'scruffGoal' : moment.kind;
@@ -313,7 +313,8 @@ export class MatchAudio {
     this.streaming.abort();
     this.speech?.source.stop();
     this.accentVoice?.stop();
-    for (const source of [...this.ambient, ...this.voices]) { source.stop(); source.disconnect(); }
+    this.band?.dispose();
+    for (const source of this.voices) { source.stop(); source.disconnect(); }
     this.voices.clear();
     void this.context?.close().catch(() => undefined);
   }

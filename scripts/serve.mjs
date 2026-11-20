@@ -8,7 +8,7 @@ const base = fileURLToPath(new URL('../dist', import.meta.url));
 const port = Number(process.env.PORT ?? 41730);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Set PORT to a number from 1 to 65535.');
 await stat(resolve(base, 'index.html')).catch(() => { throw new Error('Build the game with npm run build first.'); });
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.wav': 'audio/wav', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.txt': 'text/plain; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 const origin = `http://127.0.0.1:${port}`;
 
 const server = createServer(async (req, res) => {

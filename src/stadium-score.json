@@ -1,0 +1,243 @@
+{
+  "rate": 32000,
+  "movements": [
+    "head",
+    "answer",
+    "walk",
+    "solo",
+    "bridge",
+    "hush",
+    "reprise",
+    "home"
+  ],
+  "tunes": [
+    {
+      "id": "brass",
+      "title": "Boots on Brass",
+      "bpm": 126,
+      "beats": 4,
+      "frames": 487619,
+      "takeFrames": 516419,
+      "cues": {
+        "roundhouse": [
+          0,
+          150705
+        ],
+        "scruff": [
+          150705,
+          150705
+        ],
+        "save": [
+          301410,
+          89752
+        ],
+        "interval": [
+          391162,
+          150705
+        ],
+        "curtain": [
+          541867,
+          211657
+        ],
+        "roundhouseEncore": [
+          753524,
+          150705
+        ],
+        "scruffEncore": [
+          904229,
+          150705
+        ]
+      }
+    },
+    {
+      "id": "mango",
+      "title": "Mango on the Wing",
+      "bpm": 116,
+      "beats": 4,
+      "frames": 529655,
+      "takeFrames": 558455,
+      "cues": {
+        "roundhouse": [
+          0,
+          161214
+        ],
+        "scruff": [
+          161214,
+          161214
+        ],
+        "save": [
+          322428,
+          95007
+        ],
+        "interval": [
+          417435,
+          161214
+        ],
+        "curtain": [
+          578649,
+          227421
+        ],
+        "roundhouseEncore": [
+          806070,
+          161214
+        ],
+        "scruffEncore": [
+          967284,
+          161214
+        ]
+      }
+    },
+    {
+      "id": "caper",
+      "title": "The Biscuit Caper",
+      "bpm": 110,
+      "beats": 4,
+      "frames": 558546,
+      "takeFrames": 587346,
+      "cues": {
+        "roundhouse": [
+          0,
+          168436
+        ],
+        "scruff": [
+          168436,
+          168436
+        ],
+        "save": [
+          336872,
+          98618
+        ],
+        "interval": [
+          435490,
+          168436
+        ],
+        "curtain": [
+          603926,
+          238255
+        ],
+        "roundhouseEncore": [
+          842181,
+          168436
+        ],
+        "scruffEncore": [
+          1010617,
+          168436
+        ]
+      }
+    },
+    {
+      "id": "velcro",
+      "title": "Velcro Sneakers",
+      "bpm": 103,
+      "beats": 4,
+      "frames": 596505,
+      "takeFrames": 625305,
+      "cues": {
+        "roundhouse": [
+          0,
+          177926
+        ],
+        "scruff": [
+          177926,
+          177926
+        ],
+        "save": [
+          355852,
+          103363
+        ],
+        "interval": [
+          459215,
+          177926
+        ],
+        "curtain": [
+          637141,
+          252489
+        ],
+        "roundhouseEncore": [
+          889630,
+          177926
+        ],
+        "scruffEncore": [
+          1067556,
+          177926
+        ]
+      }
+    },
+    {
+      "id": "kites",
+      "title": "Kites over the Grandstand",
+      "bpm": 132,
+      "beats": 3,
+      "frames": 349091,
+      "takeFrames": 377891,
+      "cues": {
+        "roundhouse": [
+          0,
+          116073
+        ],
+        "scruff": [
+          116073,
+          116073
+        ],
+        "save": [
+          232146,
+          72436
+        ],
+        "interval": [
+          304582,
+          116073
+        ],
+        "curtain": [
+          420655,
+          159709
+        ],
+        "roundhouseEncore": [
+          580364,
+          116073
+        ],
+        "scruffEncore": [
+          696437,
+          116073
+        ]
+      }
+    },
+    {
+      "id": "popcorn",
+      "title": "Popcorn at the Post",
+      "bpm": 144,
+      "beats": 4,
+      "frames": 426667,
+      "takeFrames": 455467,
+      "cues": {
+        "roundhouse": [
+          0,
+          135467
+        ],
+        "scruff": [
+          135467,
+          135467
+        ],
+        "save": [
+          270934,
+          82133
+        ],
+        "interval": [
+          353067,
+          135467
+        ],
+        "curtain": [
+          488534,
+          188800
+        ],
+        "roundhouseEncore": [
+          677334,
+          135467
+        ],
+        "scruffEncore": [
+          812801,
+          135467
+        ]
+      }
+    }
+  ]
+}

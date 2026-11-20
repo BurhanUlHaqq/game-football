@@ -1,0 +1,13 @@
+CURRENT BROADCAST
+Original stadium score for ZeeRush Gaming's Rush Arena.
+Boots on Brass / Mango on the Wing / The Biscuit Caper / Velcro Sneakers /
+Kites over the Grandstand / Popcorn at the Post.
+Instrument performances rendered with GeneralUser GS 2.0.3 by S. Christian Collins.
+Instrument designer's page: https://www.schristiancollins.com/generaluser
+Instrument license: https://github.com/mrbumpy409/GeneralUser-GS/blob/main/documentation/LICENSE.txt
+
+EARLIER RECORDINGS
+The goal-line and keeper-physics previews use “Monkeys Spinning Monkeys” by Kevin MacLeod (incompetech.com).
+Composer and recording: https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1400011
+Licensed under Creative Commons Attribution 4.0 International: https://creativecommons.org/licenses/by/4.0/
+The original recording was looped and mixed under commentary.

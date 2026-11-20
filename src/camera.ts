@@ -1,11 +1,11 @@
 import * as T from 'three';
-import { BALL, clamp, damp, distance, mix } from './football';
+import { BALL, clamp, damp, distance, FIELD, GOAL_BREAK, mix } from './football';
 import type { MatchEvent, MatchState, Point, Point3 } from './football';
 import type { Match, Player } from './match';
 import { CAPTAINS } from './show';
 import type { Celebration, MatchShow } from './show';
 
-type Shot = 'wide' | 'play' | 'attack' | 'reaction' | 'rivals' | 'close-up' | 'celebration' | 'long-ball' | 'two-player' | 'stadium';
+type Shot = 'goal-line' | 'throw-in' | 'supporters' | 'wide' | 'play' | 'attack' | 'reaction' | 'rivals' | 'close-up' | 'celebration' | 'long-ball' | 'two-player' | 'stadium';
 type ActionPair = { player: number; partner: number; tick: number };
 type SafeFrame = { left: number; right: number; top: number; bottom: number };
 type FramingPoint = Point3 & { radius: number; required: boolean };
@@ -52,6 +52,7 @@ export class BroadcastCamera {
   private shot?: MatchEvent;
   private pair?: ActionPair;
   private kickoff = -1000;
+  private goalViewZ = 1;
   mode: Shot = 'wide';
   scale = 1;
   focus: number | null = null;
@@ -66,9 +67,10 @@ export class BroadcastCamera {
 
   react(event: MatchEvent) {
     if (event.kind === 'shot') this.shot = event;
+    if (event.kind === 'goal') this.goalViewZ = (event.point?.z ?? 0) >= 0 ? -1 : 1;
     if (event.kind === 'pass' || event.kind === 'distribution' || event.kind === 'kickoff' || event.kind === 'fulltime') this.shot = undefined;
     if (event.kind === 'match-start' || event.kind === 'half-start') this.kickoff = event.tick;
-    if (['goal', 'halftime', 'fulltime', 'kickoff', 'recovery'].includes(event.kind)) this.pair = undefined;
+    if (['goal', 'halftime', 'fulltime', 'kickoff', 'recovery', 'out', 'throw'].includes(event.kind)) this.pair = undefined;
     const partner = event.kind === 'pass' || event.kind === 'distribution' ? event.flight?.receiver :
       event.kind === 'save' || event.kind === 'tackle' || event.kind === 'interception' ? event.opponent : undefined;
     if (event.player !== undefined && partner !== undefined && partner !== event.player && !this.actionPair(event.tick)) {
@@ -106,7 +108,35 @@ export class BroadcastCamera {
     let angle = 0.40;
     let yaw = 0.11;
     let motion = 5;
-    if (celebration) {
+    const previousMode = this.mode;
+    const age = tick - match.stateTick;
+    if (state === 'goal' && age < 86) {
+      this.mode = 'goal-line';
+      const side = Math.sign(ball.x);
+      this.addPoint(ball, BALL, true);
+      for (const z of [-FIELD.goal, FIELD.goal]) {
+        this.addPoint({ x: side * FIELD.x, y: FIELD.bar, z }, .16, true);
+        this.addPoint({ x: side * (FIELD.x + FIELD.net), y: .16, z }, .18, true);
+      }
+      frame = { ...frame, top: .47, bottom: .43 };
+      yaw = side * (this.goalViewZ > 0 ? 1.16 : Math.PI - 1.16); angle = .38; depth = 10.4;
+    } else if (state === 'goal' && age >= GOAL_BREAK - 82 && celebration?.team !== undefined) {
+      this.mode = 'supporters';
+      const x = celebration.team ? 6.5 : -6.5;
+      this.addPoint({ x, y: 2.09, z: -17.85 }, .22, true);
+      yaw = x * -.022; angle = .12; depth = portrait ? 4.9 : 5.1;
+    } else if (state === 'throw-in' && match.ballReturn) {
+      this.mode = 'throw-in';
+      const r = match.ballReturn;
+      this.addPoint(ball, BALL, true);
+      if (age > 43 || distance(match.players[r.thrower], ball) < 5) this.addActor(match, r.thrower, rendered, true);
+      if (r.reason !== 'touchline' && age < 50) {
+        this.addPoint({ x: r.side * FIELD.x, y: FIELD.bar, z: Math.sign(ball.z || 1) * FIELD.goal }, .26, true);
+        yaw = r.side * 1.07;
+      } else yaw = -.70 * Math.sign(ball.x || .1);
+      frame = { ...frame, top: .47, bottom: .32 };
+      angle = .32; depth = age < 45 ? 10.7 : 9.5; motion = 8;
+    } else if (celebration) {
       this.mode = 'celebration';
       this.frameCelebration(match, celebration, rendered);
       depth = finale ? 13.4 : 7.7;
@@ -139,7 +169,7 @@ export class BroadcastCamera {
       this.addPoint({ x: 0, y: 0.8, z: -1 });
       depth = portrait ? 46 : 33;
     }
-    const cut = this.dolly === 0 || restartCut;
+    const cut = this.dolly === 0 || restartCut || (this.mode !== previousMode && [this.mode, previousMode].some(mode => mode === 'goal-line' || mode === 'supporters' || mode === 'throw-in'));
     this.place(frame, depth, angle, yaw, dt, motion, cut, match.ballVisible && !celebration);
     if (match.ballVisible && (state === 'live' || state === 'setup' || state === 'kickoff')) {
       this.establish(tick, ball, portrait);

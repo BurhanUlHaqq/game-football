@@ -3,7 +3,7 @@ import type { MatchEvent, Score, Team } from './football';
 import { HEROES } from './heroes';
 
 export type ArenaCue = {
-  kind: 'kickoff' | 'save' | 'post' | 'goal' | 'halftime' | 'fulltime';
+  kind: 'out' | 'kickoff' | 'save' | 'post' | 'goal' | 'halftime' | 'fulltime';
   tick: number; until: number; priority: number;
   title: string; detail?: string; team?: Team; x?: number; score?: Score;
 };
@@ -24,6 +24,9 @@ export class ArenaShow {
       case 'match-start':
       case 'half-start':
         cue = { kind: 'kickoff', tick, until: tick + 153, priority: 1, title: 'KICKOFF', detail: kind === 'half-start' ? 'SECOND HALF' : 'HERE WE GO!' };
+        break;
+      case 'out':
+        cue = { kind, tick, until: tick + 106, priority: 3, title: event.detail === 'over' ? 'OVER THE BAR' : event.detail === 'wide' ? 'WIDE' : 'BALL OUT', detail: event.restart, x: point?.x };
         break;
       case 'post':
         cue = { kind, tick, until: tick + 95, priority: 2, title: 'OFF THE POST', detail: 'SO CLOSE!', x: point?.x };
@@ -50,7 +53,7 @@ export class ArenaShow {
       default: return;
     }
     const current = this.get(tick);
-    if (current && current.priority >= cue.priority) return;
+    if (kind !== 'out' && current && current.priority >= cue.priority) return;
     this.cue = cue;
     return cue;
   }
@@ -59,7 +62,7 @@ export class ArenaShow {
 export function fanReaction(cue: ArenaCue | undefined, tick: number, team: Team, x: number) {
   if (!cue) return 0;
   const age = (tick - cue.tick) / 60;
-  if (cue.kind === 'post') return -Math.sin(Math.PI * clamp(age / 0.79, 0, 1)) * 0.47;
+  if (cue.kind === 'post' || cue.kind === 'out') return -Math.sin(Math.PI * clamp(age / 0.79, 0, 1)) * 0.47;
   if ((cue.kind === 'goal' || cue.kind === 'save') && cue.team !== undefined && cue.team !== team) {
     return -Math.sin(Math.PI * clamp(age / 0.96, 0, 1)) * (cue.kind === 'goal' ? 0.66 : 0.36);
   }

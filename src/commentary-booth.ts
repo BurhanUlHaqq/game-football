@@ -38,53 +38,48 @@ function face(c: Brush, x: number, y: number, gaze: number, blink: boolean, mout
   if (mouth > .35) oval(c, x + 1, y + 17 + open * .32, 5.3, open * .22, '#fb91a0');
 }
 
-function mick(c: Brush, active: boolean, t: number, mouth: number) {
+function jom(c: Brush, active: boolean, t: number, mouth: number) {
   c.save();
-  c.translate(77, 95);
-  c.scale(active ? 1.27 : 1.12, active ? 1.27 : 1.12);
-  const bounce = active ? -mouth * 4 : Math.sin(t * 2.3) * 1.2;
-  // A clockwork spring carries the orange squeeze bulb and its brass horn.
-  stroke(c, 'M 0 42 C -25 38 18 35 6 32 C -17 29 -13 27 8 25 C 24 23 8 20 -5 19', '#47314b', 9);
-  stroke(c, 'M 0 41 C -25 37 18 34 6 31 C -17 28 -13 26 8 24 C 24 22 8 19 -5 18', '#ffcd83', 3.5);
-  c.translate(0, bounce);
-  c.rotate((active ? -.035 : .055) + Math.sin(t * 2.8) * .018);
-  shape(c, 'M -28 -21 Q -39 -18 -45 -31 L -49 -14 Q -40 -7 -29 -8 Z', '#ffd367');
-  oval(c, -46, -23, 6, 13, '#ffb741', true, -.34);
-  oval(c, -47, -23, 2, 8, '#a95243', false, -.34);
-  shape(c, 'M -30 -16 Q -36 -42 -10 -45 Q 17 -51 29 -28 Q 45 1 18 20 Q -4 32 -23 14 Q -35 4 -30 -16 Z', '#fa8551');
-  oval(c, -16, -32, 9, 3.8, '#ffba79', false, -.3);
-  stroke(c, 'M -30 -12 Q -40 -39 -17 -48 Q 17 -64 32 -27', ink, 7);
-  stroke(c, 'M -29 -15 Q -39 -38 -16 -46 Q 15 -60 31 -27', '#ffcd7a', 2.6);
-  oval(c, -29, -11, 7.4, 12, '#773f56', true, -.14);
-  oval(c, -29, -11, 2.2, 7, '#ffc65b');
-  oval(c, 24, 1, 5, 3.2, '#d46051');
-  face(c, 3, -13, active ? 0 : 2, t % 4.3 > 4.15, mouth);
+  c.translate(79, 85 + Math.sin(t * 2.1) * 1.1 - mouth * 1.5);
+  c.scale(active ? 1.20 : 1.11, active ? 1.20 : 1.11);
+  c.rotate(active ? -.025 : .085);
+  oval(c, -4, 42, 26, 25, '#e7894b', true);
+  stroke(c, 'M -19 51 Q -47 57 -47 32 Q -45 19 -52 23', ink, 10);
+  stroke(c, 'M -19 51 Q -47 57 -47 32 Q -45 19 -52 23', '#b9b8de', 6);
+  const fur = '#9599c2';
+  shape(c, 'M -30 -11 L -34 -43 Q -35 -48 -29 -45 L -9 -32 Q 1 -35 11 -31 L 27 -45 Q 34 -49 32 -38 L 29 -12 Q 38 -2 33 5 L 37 8 L 27 11 Q 21 26 1 27 Q -17 28 -28 13 L -37 10 L -32 4 L -38 1 Z', fur);
+  shape(c, 'M -29 -38 L -26 -21 L -15 -29 Z', '#edaaa9');
+  shape(c, 'M 17 -28 L 27 -37 L 25 -20 Z', '#edaaa9');
+  oval(c, 2, 8, 22, 15, '#f7e7cd');
+  face(c, 2, -9, active ? 1 : 3, t % 4.4 > 4.25, mouth);
+  oval(c, 3, 1, 5, 3.4, '#664654', true);
+  stroke(c, 'M -13 5 L -37 0 M -14 9 L -38 12 M 18 5 L 39 1 M 18 10 L 39 14', '#53445a', 1.8);
+  stroke(c, 'M -33 -4 Q -40 -39 -8 -43 Q 9 -47 20 -38', ink, 5);
+  oval(c, -31, -3, 6, 10, '#f4bd69', true);
+  shape(c, 'M -9 29 L -3 34 L 2 29 L 11 34 L 2 40 L -2 36 L -9 41 Z', '#39797f');
   c.restore();
 }
 
-function emma(c: Brush, active: boolean, t: number, mouth: number) {
+function jerry(c: Brush, active: boolean, t: number, mouth: number) {
   c.save();
-  c.translate(221, 89 + (active ? -mouth * 2.5 : Math.sin(t * 2 + 1) * 1.1));
-  c.scale(active ? 1.25 : 1.12, active ? 1.25 : 1.12);
-  c.rotate((active ? .01 : -.055) + Math.sin(t * 2.5) * .015);
-  // The two bells and winding key move with the turquoise clock case.
-  const tip = active ? mouth * 3 : 0;
-  stroke(c, 'M 29 4 L 44 0', '#f3be62', 6);
-  oval(c, 45, -5 - tip, 5, 6, '#f6cd76', true, -.6);
-  oval(c, 47, 4 + tip, 5, 6, '#f6cd76', true, .5);
-  stroke(c, 'M -17 -30 L -22 -42 M 16 -31 L 22 -43', ink, 5);
-  oval(c, -19, -39 - tip, 15, 8, '#fcce62', true, -.48);
-  oval(c, 20, -40 + tip, 15, 8, '#fcce62', true, .48);
-  stroke(c, 'M -1 -33 L 0 -48', ink, 3);
-  oval(c, 0, -49, 4, 4, '#ffe198', true);
-  shape(c, 'M -27 -19 Q -21 -35 -2 -35 Q 26 -37 31 -14 L 28 12 Q 23 32 2 34 Q -22 31 -29 15 Z', '#46c8b9');
-  oval(c, -1, -1, 23.7, 25, '#adf0c8', true);
-  oval(c, -21, 5, 4, 2.7, '#6ac9b4');
-  face(c, 0, -10, active ? 0 : -2, (t + .9) % 5.1 > 4.96, mouth);
-  stroke(c, 'M -23 -13 Q -29 -32 -13 -38', ink, 4);
-  oval(c, -26, -8, 6, 9, '#4a6381', true);
-  stroke(c, 'M -26 0 Q -26 13 -12 14', ink, 2.5);
-  oval(c, -11, 14, 3.5, 2.6, ink);
+  c.translate(221, 90 + Math.sin(t * 2.4 + 1) * 1.2 - mouth * 1.7);
+  c.scale(active ? 1.22 : 1.12, active ? 1.22 : 1.12);
+  c.rotate(active ? .015 : -.085);
+  oval(c, 0, 35, 22, 22, '#479f91', true);
+  const fur = '#cc9065';
+  for (const side of [-1, 1]) {
+    oval(c, side * 24, -24, 16, 16.5, fur, true);
+    oval(c, side * 24, -24, 10.7, 11.5, '#f5afa1');
+  }
+  shape(c, 'M -26 -13 Q -22 -34 -3 -33 Q 20 -36 28 -14 Q 34 11 17 20 Q 4 29 -10 22 Q -25 19 -32 8 Q -34 2 -27 -1 Z', fur);
+  oval(c, -3, 7, 21, 14, '#ffe5bf');
+  face(c, -2, -10, active ? -1 : -3, (t + .7) % 4.7 > 4.55, mouth);
+  oval(c, -5, 0, 4.3, 3.2, '#553e4b', true);
+  stroke(c, 'M -17 4 L -35 0 M -18 8 L -34 10 M 13 6 L 30 2 M 14 10 L 31 12', '#775964', 1.6);
+  stroke(c, 'M 27 -5 Q 31 -32 6 -36 Q -4 -38 -11 -33', ink, 4.5);
+  oval(c, 26, -3, 6, 8, '#5cc5bd', true);
+  stroke(c, 'M 26 3 Q 25 15 12 15', ink, 2.8);
+  oval(c, 11, 15, 3.5, 2.6, ink);
   c.restore();
 }
 
@@ -127,18 +122,18 @@ export class CommentaryBooth {
     c.fillStyle = '#26324a'; c.fillRect(0, 76, 300, 58);
     oval(c, 76, 132, 32, 24, '#9f5661', true);
     oval(c, 222, 130, 32, 24, '#38777d', true);
-    mick(c, host === 'MICK', t, host === 'MICK' ? mouth : 0);
-    emma(c, host === 'EMMA', t, host === 'EMMA' ? mouth : 0);
+    jom(c, host === 'JOM', t, host === 'JOM' ? mouth : 0);
+    jerry(c, host === 'JERRY', t, host === 'JERRY' ? mouth : 0);
     shape(c, 'M -3 139 L 24 128 H 276 L 303 139 V 158 H -3 Z', '#b77756');
     c.fillStyle = '#dba273'; c.fillRect(0, 136, 300, 4);
     c.fillStyle = '#354158'; c.fillRect(0, 141, 300, 15);
     microphone(c, 112, true); microphone(c, 185, false);
-    for (const [i, on] of [host === 'MICK', host === 'EMMA'].entries()) {
+    for (const [i, on] of [host === 'JOM', host === 'JERRY'].entries()) {
       const x = i ? 205 : 60;
       const light = on ? (i ? '#a3ffdf' : '#ffdf95') : '#c1ccd9';
       if (introduction) {
         c.font = 'bold 13px system-ui, sans-serif'; c.textAlign = 'center'; c.fillStyle = light;
-        c.fillText(i ? 'EMMA' : 'MICK', x + 15, 153);
+        c.fillText(i ? 'JERRY' : 'JOM', x + 15, 153);
       } else stroke(c, `M ${x} 148 h 29`, on ? light : '#617080', 4);
     }
     c.fillStyle = '#253145'; c.fillRect(126, 130, 48, 8);

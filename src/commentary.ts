@@ -6,7 +6,7 @@ import { CAPTAINS } from './show';
 import type { CastRecap, ShowMoment } from './show';
 
 export type LineId = keyof typeof lines;
-export type BoothHost = 'MICK' | 'EMMA';
+export type BoothHost = 'JOM' | 'JERRY';
 type Exchange = { opening: LineId; reply: boolean; player?: number; opponent?: number };
 export type CommentaryCall = { id: LineId; text: string; host: BoothHost; priority: number; ticks: number; exchange?: Exchange };
 const goals = ['goalOne', 'goalTwo', 'goalThree'] as const;
@@ -80,13 +80,22 @@ export class Commentary {
     this.played.set(id, tick);
     let exchange = reply;
     this.pending = undefined;
-    if ('answer' in line) {
+    let answer: LineId | undefined = 'answer' in line ? line.answer as LineId : undefined;
+    if (!answer && event?.kind === 'goal') {
+      const otherIsCat = line.voice === 'bf_emma';
+      const base = event.detail === 'Own goal' ? otherIsCat ? 'ownAnswerCat' : 'ownAnswerMouse' :
+        /equalizer/i.test(id) ? otherIsCat ? 'levelAnswerCat' : 'levelAnswerMouse' :
+        /^leadChange/.test(id) ? otherIsCat ? 'leadAnswerCat' : 'leadAnswerMouse' :
+        otherIsCat ? 'netAnswerCat' : 'netAnswerMouse';
+      answer = this.pick(base, tick) ?? base;
+    }
+    if (answer) {
       exchange = { opening: id, reply: false, player: event?.player, opponent: event?.opponent ?? event?.flight?.receiver };
-      this.pending = { answer: line.answer as LineId, at: this.busyUntil, exchange };
-      this.lastBoothTopic = id.replace(/Alt\d+$/, '');
+      this.pending = { answer, at: this.busyUntil, exchange };
+      if (event?.kind !== 'goal') this.lastBoothTopic = id.replace(/Alt\d+$/, '');
       this.nextBooth = tick + boothSpacing;
     }
-    return { id, text: line.text, host: line.voice === 'bf_emma' ? 'EMMA' : 'MICK', priority,
+    return { id, text: line.text, host: line.voice === 'bf_emma' ? 'JERRY' : 'JOM', priority,
       ticks: exchange && !exchange.reply ? duration + 13 : Math.max(150, duration + 20), exchange };
   }
 
@@ -192,6 +201,12 @@ export class Commentary {
         if (called) { this.passCalls++; this.lastPass = tick; }
         return called;
       }
+      case 'out':
+        return say(event.detail === 'over' ? 'missHigh' : event.detail === 'wide' ? 'missWide' : 'sideOut', 4, 0);
+      case 'throw':
+        if (event.restart === 'Keeper throw') return say('keeperReturn', 2, 145);
+        if (event.restart === 'Corner throw') return say('cornerReturn', 2, 145);
+        return;
       case 'recovery': this.pending = undefined; return;
       default: return;
     }
